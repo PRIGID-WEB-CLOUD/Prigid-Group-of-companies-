@@ -1,0 +1,138 @@
+{
+  "id": "b3d21b14-e5b7-4aa3-94ef-d6e12b7a776e",
+  "createdAt": "2026-09-11T13:32:40.259Z",
+  "runtimeVersion": "exposdk:54.0.0",
+  "launchAsset": {
+    "key": "bundle-1789133560259-435",
+    "contentType": "application/javascript",
+    "url": "https://localhost:3000/1789133560259-435/_expo/static/js/ios/bundle.js"
+  },
+  "assets": [],
+  "metadata": {},
+  "extra": {
+    "eas": {},
+    "expoClient": {
+      "name": "LUXE BOUTIQUE Mobile",
+      "slug": "luxe-boutique-mobile",
+      "version": "1.0.0",
+      "orientation": "portrait",
+      "icon": "./assets/images/icon.png",
+      "scheme": "luxe-boutique-mobile",
+      "userInterfaceStyle": "automatic",
+      "newArchEnabled": true,
+      "splash": {
+        "image": "./assets/images/icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff",
+        "imageUrl": "http://127.0.0.1:8081/assets/./assets/images/icon.png"
+      },
+      "ios": {
+        "supportsTablet": false,
+        "bundleIdentifier": "com.replit.luxeboutiquemobile"
+      },
+      "android": {
+        "intentFilters": [
+          {
+            "action": "VIEW",
+            "autoVerify": true,
+            "data": [
+              {
+                "scheme": "luxe-boutique-mobile",
+                "host": "product",
+                "pathPattern": ".*"
+              },
+              {
+                "scheme": "luxe-boutique-mobile",
+                "host": "orders"
+              },
+              {
+                "scheme": "luxe-boutique-mobile",
+                "host": "search"
+              },
+              {
+                "scheme": "luxe-boutique-mobile",
+                "host": "blog",
+                "pathPattern": ".*"
+              }
+            ],
+            "category": [
+              "BROWSABLE",
+              "DEFAULT"
+            ]
+          }
+        ]
+      },
+      "web": {
+        "favicon": "./assets/images/icon.png"
+      },
+      "plugins": [
+        [
+          "expo-router",
+          {
+            "origin": "https://replit.com/"
+          }
+        ],
+        "expo-font",
+        "expo-web-browser",
+        [
+          "expo-notifications",
+          {
+            "icon": "./assets/images/icon.png",
+            "color": "#8B6F47",
+            "defaultChannel": "default"
+          }
+        ]
+      ],
+      "experiments": {
+        "typedRoutes": true,
+        "reactCompiler": true
+      },
+      "_internal": {
+        "isDebug": false,
+        "projectRoot": "/app/applet/artifacts/luxe-boutique-mobile",
+        "dynamicConfigPath": {},
+        "staticConfigPath": "/app/applet/artifacts/luxe-boutique-mobile/app.json",
+        "packageJsonPath": "/app/applet/artifacts/luxe-boutique-mobile/package.json",
+        "pluginHistory": {
+          "expo-font": {
+            "name": "expo-font",
+            "version": "14.0.12"
+          },
+          "expo-web-browser": {
+            "name": "expo-web-browser",
+            "version": "15.0.11"
+          },
+          "expo-notifications": {
+            "name": "expo-notifications",
+            "version": "56.0.25"
+          }
+        }
+      },
+      "sdkVersion": "54.0.0",
+      "platforms": [
+        "ios",
+        "android",
+        "web"
+      ],
+      "extra": {
+        "router": {
+          "origin": "https://replit.com/"
+        }
+      },
+      "iconUrl": "http://127.0.0.1:8081/assets/./assets/images/icon.png",
+      "hostUri": "localhost:3000/ios"
+    },
+    "expoGo": {
+      "debuggerHost": "localhost:3000/ios",
+      "developer": {
+        "tool": "expo-cli",
+        "projectRoot": "/app/applet/artifacts/luxe-boutique-mobile"
+      },
+      "packagerOpts": {
+        "dev": false
+      },
+      "mainModuleName": "node_modules/.bun/expo-router@6.0.24+e8dfc33704ca88c9/node_modules/expo-router/entry"
+    },
+    "scopeKey": "@anonymous/luxe-boutique-mobile-eb9c1c73-5df8-4d5b-9387-4ddae2a02739"
+  }
+}

@@ -1,0 +1,19 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Outbound email queue collection (write-only queue)
+    match /mail/{mailId} {
+      allow create: if request.resource.data.to is string
+        && request.resource.data.message is map
+        && request.resource.data.delivery is map;
+      allow read, update, delete: if false;
+    }
+  }
+}

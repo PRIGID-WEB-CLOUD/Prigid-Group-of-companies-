@@ -1,0 +1,106 @@
+
+THE SUMMER ATELIER 2024
+Architectural
+Elegance
+A study in precision tailoring and sustainable silk fabrics.
+Explore Collection
+Curation
+The Collections
+
+Monochrome
+
+Accessories
+
+Footwear
+New In
+Featured
+
+New Season
+Shop All
+→
+Home
+Shop
+Cart
+Account
+!
+
+Made with ReplitBuild for free
+
+Log 1 of 1
+Uncaught Error
+Cannot read properties of undefined (reading 'UNDETERMINED')
+Call Stack
+
+Source Map
+This call stack is not symbolicated. Some features are unavailable such as viewing the function name or tapping to open files.
+convertPermissionStatus
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:195577:42
+resolvePermissionAsync
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:195608:14
+Object.getPermissionsAsync
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:195623:14
+Object.getPermissionsAsync
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:195505:56
+registerForPushNotificationsAsync
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:190378:44
+<unknown>
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:190347:7
+react-stack-bottom-frame
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:16716:20
+runWithFiberInDEV
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:4635:70
+commitHookEffectListMount
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:9625:620
+commitHookPassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:9662:58
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10564:27
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10604:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10563:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10604:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10563:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10604:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10563:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10563:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10567:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10563:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10604:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10563:11
+recursivelyTraversePassiveMountEffects
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10555:106
+commitPassiveMountOnFiber
+https://bc1f12c6-a1a3-45ed-98d9-f29885099ff8-00-1qhvfwkbqlb25.spock.replit.dev:3001/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__c289c0218f446f5969794daa94e36b65/node_modules/expo-router/entry.bundle:10604:11
+Showing all frames

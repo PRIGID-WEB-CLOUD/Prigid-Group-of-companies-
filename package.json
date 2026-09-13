@@ -1,0 +1,59 @@
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "workspaces": [
+    "artifacts/*",
+    "lib/*",
+    "lib/integrations/*",
+    "scripts"
+  ],
+  "scripts": {
+    "dev": "PORT=5001 npm run dev --workspace=@workspace/api-server & PORT=3005 npm run dev --workspace=@workspace/luxe-boutique-admin & PORT=3000 npm run dev --workspace=@workspace/luxe-boutique",
+    "dev:store": "PORT=5001 npm run dev --workspace=@workspace/api-server & PORT=3000 npm run dev --workspace=@workspace/luxe-boutique",
+    "dev:admin": "PORT=5001 npm run dev --workspace=@workspace/api-server & PORT=3000 npm run dev --workspace=@workspace/luxe-boutique-admin",
+    "build": "node ./scripts/build.mjs",
+    "build:tiered": "node ./scripts/build-tiered.mjs",
+    "build:basic": "node ./scripts/build-tiered.mjs --tier=basic",
+    "build:professional": "node ./scripts/build-tiered.mjs --tier=professional",
+    "build:premium": "node ./scripts/build-tiered.mjs --tier=premium",
+    "build:custom": "node ./scripts/build-tiered.mjs --tier=custom_exclusive",
+    "build:standard": "node ./scripts/build-tiered.mjs --tier=standard",
+    "build:managed": "node ./scripts/build-tiered.mjs --tier=managed_hosted",
+    "build:enterprise": "node ./scripts/build-tiered.mjs --tier=enterprise_exclusive",
+    "verify:license": "node ./scripts/verify-license-tier.mjs",
+    "verify:license:all": "node ./scripts/verify-license-tier.mjs --all",
+    "start": "node server.ts",
+    "build:all": "npm run typecheck:all && npm run build --workspaces --if-present",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "npm run typecheck:libs && npm run typecheck --workspace=@workspace/api-server",
+    "typecheck:all": "npm run typecheck:libs && npm run typecheck --workspaces --if-present",
+    "lint": "npm run typecheck:all"
+  },
+  "private": true,
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.23.1",
+    "@types/sharp": "^0.32.0",
+    "pg": "^8.23.0",
+    "prettier": "^3.8.4",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@googlemaps/js-api-loader": "^2.1.1",
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
+    "@types/google.maps": "^3.66.2",
+    "@types/leaflet": "^1.9.22",
+    "@types/multer": "^2.2.0",
+    "@vis.gl/react-google-maps": "^1.10.0",
+    "cloudinary": "^2.11.0",
+    "firebase": "^12.19.0",
+    "leaflet": "^1.9.4",
+    "multer": "^2.3.0",
+    "nodemailer": "^10.0.9",
+    "puppeteer": "^25.10.0",
+    "sharp": "^0.35.4"
+  }
+}

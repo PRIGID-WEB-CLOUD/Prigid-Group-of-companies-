@@ -1,0 +1,9 @@
+- [Post-merge timeout](post-merge-timeout.md) — default 20s too short for monorepo with Expo; set to 90s.
+- [Expo port mapping](expo-port-mapping.md) — Expo maps local 3002 to external 3001, so keep the API on a separate local port such as 8000.
+- [Admin unauthenticated check](admin-unauthenticated-check.md) — `/api/auth/me` returns 401 on the admin login screen until an admin session exists; this is expected.
+- [Admin preview port](admin-preview-port.md) — the separate admin Vite app needs an explicit 5000-to-5000 mapping for its public preview URL.
+- [Admin role guard](admin-role-guard.md) — frontend admin access must allow both ADMIN and SUPER_ADMIN, matching the backend middleware.
+- [Coupon API contract](coupon-api-contract.md) — admin coupons use discountType/discountValue/usedCount fields; normalize legacy payloads at the client boundary.
+- [Live product preview](live-product-preview.md) — admin product previews must load the actual storefront route by saved product ID, not a simulated search card.
+- [Admin persistence boundary](admin-persistence-boundary.md) — admin/channel collections belong in PostgreSQL; empty DB states must remain empty instead of being filled with demo rows.
+- [Auth email delivery](auth-email-delivery.md) — reset links require an explicit public app URL; SMTP must use implicit TLS or STARTTLS rather than dev-domain fallbacks.

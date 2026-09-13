@@ -1,0 +1,54 @@
+# PROPRIETARY AND CONFIDENTIAL COMMERCIAL LICENSE
+## Ready-to-Launch E-Commerce & Retail Management Platform
+
+**Copyright © 2026 PRIGID HOLDINGS / PRIGID GROUP OF COMPANIES. All Rights Reserved.**
+
+---
+
+### NOTICE OF PROPRIETARY INTELLECTUAL PROPERTY
+This software platform, codebase, mobile application bundle, database architectures, and accompanying documentation constitute proprietary trade secrets and copyrighted intellectual property owned exclusively by **PRIGID HOLDINGS / PRIGID GROUP OF COMPANIES** ("PRIGID", "Company").
+
+Access to, execution of, or modification of this codebase is governed strictly by the terms of this Proprietary Commercial License and the specific commercial license contract (`LICENSE-STANDARD.md`, `LICENSE-MANAGED-HOSTED.md`, or `LICENSE-EXCLUSIVE-SOURCE-CODE.md`) accompanying your authorized distribution tier.
+
+---
+
+### SECTION 1. GRANT OF LICENSE
+Subject to the terms and conditions of this Agreement and payment of the applicable commercial licensing fees, PRIGID grants to the authorized purchasing entity ("Client") a limited, non-exclusive, non-transferable, revocable license to install, execute, and operate the platform solely for Client's direct commercial retail operations.
+
+---
+
+### SECTION 2. INTELLECTUAL PROPERTY OWNERSHIP
+PRIGID retains all right, title, and interest in and to the Software, including without limitation all copyrights, trade secrets, patents, design systems, algorithms, APIs, database models, and proprietary business logic. Nothing herein conveys ownership of PRIGID's underlying software platform to Client.
+
+---
+
+### SECTION 3. OPERATIONAL RESTRICTIONS
+Except as expressly authorized under written agreement with PRIGID, Client shall not:
+* **(a) Sublicense or Syndicate:** Sublicense, distribute, lease, loan, or resell the Software or any portion thereof;
+* **(b) Reverse Engineering:** Decompile, disassemble, or reverse engineer compiled modules, container images, or runtime assets;
+* **(c) Derivative Templates:** Extract modular UI components, APIs, or architectural schemas to construct competing commercial software products or developer boilerplates;
+* **(d) Notice Removal:** Alter, obscure, or remove any copyright notices, trademark indicators, or digital license signatures;
+* **(e) Credential Exposure:** Publish or expose server environment secrets, database connection strings, payment gateway keys, or private tokens.
+
+---
+
+### SECTION 4. PAYMENT SECURITY & PCI-DSS COMPLIANCE
+The Software is architected exclusively around client-side tokenization and hosted payment gateways (Paystack, Flutterwave, Stripe, PayPal). The Software does not capture or store raw cardholder Primary Account Numbers (PAN), CVVs, or banking PINs. Client maintains sole accountability for securing merchant API keys, configuring webhook signatures, and ensuring compliance with PCI-DSS guidelines.
+
+---
+
+### SECTION 5. DATA PRIVACY & STATUTORY REGULATION
+Client acts as the independent Data Controller for all customer identities, order histories, and personal data collected through the platform. Client is solely responsible for compliance with the Data Protection Act, 2012 (Act 843 of Ghana), GDPR, and applicable privacy legislation.
+
+---
+
+### SECTION 6. DISCLAIMER OF WARRANTIES
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL PRIGID HOLDINGS / PRIGID GROUP OF COMPANIES BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS OPERATION.
+
+---
+
+### SECTION 7. COMMERCIAL LICENSE TIERS
+For complete, tier-specific terms, covenants, and signature execution blocks, refer to:
+* **Standard Commercial License:** [`LICENSE-STANDARD.md`](LICENSE-STANDARD.md) (Basic & Professional Tiers)
+* **Managed & Hosted Service License:** [`LICENSE-MANAGED-HOSTED.md`](LICENSE-MANAGED-HOSTED.md) (Premium Tier)
+* **Exclusive Source-Code License:** [`LICENSE-EXCLUSIVE-SOURCE-CODE.md`](LICENSE-EXCLUSIVE-SOURCE-CODE.md) (Custom / Exclusive Tier)

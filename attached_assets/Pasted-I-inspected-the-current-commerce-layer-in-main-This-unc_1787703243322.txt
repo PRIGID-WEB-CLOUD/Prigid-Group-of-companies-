@@ -1,0 +1,440 @@
+I inspected the current commerce layer in main. This uncovered more serious issues than the remaining auth issues.
+
+🔴 1. Coupon redemption is vulnerable to race conditions
+
+/coupons/redeem does:
+
+1. Read usedCount
+
+
+2. Calculate usedCount + 1
+
+
+3. Update the row
+
+
+
+There is no atomic conditional update or transaction.
+
+Two simultaneous requests can both read:
+
+usedCount = 9
+maxUses = 10
+
+Both can then redeem successfully, resulting in:
+
+usedCount = 10
+
+while two customers received the coupon.
+
+Worse, /redeem itself doesn't check:
+
+expiresAt
+maxUses
+
+before incrementing. It only checks active.
+
+🔴 Fix this first
+
+Use an atomic update:
+
+UPDATE coupons
+SET used_count = used_count + 1
+WHERE id = ?
+  AND active = true
+  AND (expires_at IS NULL OR expires_at > NOW())
+  AND (max_uses IS NULL OR used_count < max_uses)
+RETURNING *;
+
+If zero rows return → coupon rejected.
+
+
+---
+
+🔴 2. The client controls the coupon discount amount
+
+This is a major business-logic problem.
+
+/coupons/validate accepts:
+
+{
+  "code": "...",
+  "orderAmount": 100
+}
+
+and calculates the discount from that supplied amount.
+
+A malicious client can simply submit:
+
+{
+  "code": "50OFF",
+  "orderAmount": 1000000
+}
+
+even if their actual cart is worth $20.
+
+The server must calculate the order subtotal from the database/cart, not trust orderAmount.
+
+
+---
+
+🔴 3. /coupons/redeem has the same problem
+
+The redeem endpoint accepts the client's orderAmount directly.
+
+That means the customer controls the amount used to calculate the discount.
+
+For example, a percentage coupon could be abused by submitting an artificially high order amount.
+
+Never trust price/order totals from the browser.
+
+
+---
+
+🔴 4. Cart quantity can be manipulated
+
+This code:
+
+const quantity = Number(req.body.quantity);
+
+has no proper validation.
+
+A client can send:
+
+{
+  "quantity": 999999999
+}
+
+or potentially:
+
+{
+  "quantity": -999
+}
+
+The update route handles <= 0, but the POST route doesn't enforce a positive bounded quantity before adding it.
+
+Use:
+
+z.number().int().min(1).max(100)
+
+or whatever maximum makes sense.
+
+
+---
+
+🔴 5. There is no inventory/stock check when adding to cart
+
+productSnapshot() retrieves:
+
+id
+name
+price
+imageUrl
+
+but not stock.
+
+So a customer can add unlimited quantities of an out-of-stock product.
+
+This becomes especially dangerous when checkout/payment is eventually implemented.
+
+
+---
+
+🔴 6. Cart stores a product snapshot that can become stale
+
+The cart stores:
+
+product
+
+inside the cart item.
+
+That means if an administrator changes:
+
+price
+name
+image
+
+the cart's embedded snapshot may contain the old values.
+
+For commerce, the authoritative price should be retrieved from the current product at checkout.
+
+The cart snapshot can be useful for display, but must never be used as the final billing amount.
+
+
+---
+
+🔴 7. Payment system is not implemented
+
+These endpoints currently return:
+
+501 Payment provider is not configured
+
+for both initialization and verification.
+
+So the current commerce API cannot actually process or verify payments.
+
+That's fine if this is still development, but it means the checkout isn't production-ready.
+
+
+---
+
+🔴 8. Reviews are completely unauthenticated
+
+Anyone can POST:
+
+POST /reviews
+
+with:
+
+{
+  "productId": "...",
+  "rating": 5,
+  "comment": "...",
+  "authorName": "..."
+}
+
+No login is required.
+
+Therefore someone can create unlimited fake reviews.
+
+There is also no validation that:
+
+rating = 1–5
+
+A user can potentially submit:
+
+{"rating":999999}
+
+Better
+
+Require authentication and ideally verify:
+
+customer purchased product
+AND
+order is completed
+
+before allowing a review.
+
+
+---
+
+🔴 9. Reviews can be abused for stored XSS depending on frontend rendering
+
+The API accepts arbitrary:
+
+comment
+authorName
+
+without sanitization.
+
+If the frontend later renders review content using unsafe HTML, this becomes stored XSS.
+
+At minimum:
+
+validate length
+
+reject/control HTML
+
+render as text
+
+never use dangerouslySetInnerHTML for user reviews unless sanitized
+
+
+
+---
+
+🟠 10. Wishlist/cart use x-session-id
+
+This is particularly important.
+
+req.headers["x-session-id"]
+
+is accepted as the shopping session identifier.
+
+Therefore a client can simply change:
+
+X-Session-ID: someone-elses-session
+
+and potentially access/modify that person's cart or wishlist if they know/guess the session ID.
+
+If luxe_session is the secure authenticated cookie, don't allow arbitrary client-supplied session IDs for authenticated users.
+
+Use a server-generated anonymous cart token with sufficient entropy, or tie carts to the authenticated user ID.
+
+
+---
+
+🟠 11. sessionId() falls back to "anon"
+
+This is even more concerning:
+
+?? "anon"
+
+Every request without a session identifier uses the same:
+
+anon
+
+cart.
+
+That means unrelated anonymous visitors could potentially share the same anonymous cart.
+
+This should be removed.
+
+Generate a unique anonymous session cookie instead.
+
+
+---
+
+🟠 12. Cart add operation has a race condition
+
+The code does:
+
+SELECT existing
+↓
+if exists → UPDATE
+else → INSERT
+
+Two simultaneous requests can both see no item and both attempt to insert.
+
+You should have a unique constraint:
+
+(session_id, product_id)
+
+and use an atomic upsert.
+
+
+---
+
+🟠 13. No validation schema for commerce requests
+
+The API repeatedly does:
+
+req.body as {...}
+
+instead of runtime validation.
+
+TypeScript casts don't validate incoming HTTP requests.
+
+This affects:
+
+cart
+
+wishlist
+
+coupons
+
+reviews
+
+
+This is a recurring pattern that should be replaced with Zod.
+
+
+---
+
+🚨 Most serious commerce problems
+
+If this application is going to handle real money, I'd prioritize them like this:
+
+🔴 Critical
+
+1. Client-controlled order amount
+
+
+2. Coupon redemption race condition
+
+
+3. Coupon redeem doesn't enforce expiry/max-use
+
+
+4. Anonymous/shared "anon" cart
+
+
+5. Client-controlled session ID
+
+
+6. No real payment verification yet
+
+
+
+🔴 High
+
+7. Unlimited cart quantities
+
+
+8. No stock validation
+
+
+9. Unauthenticated reviews
+
+
+10. No rating validation
+
+
+11. Cart price snapshots potentially becoming stale
+
+
+
+🟠 Medium
+
+12. Cart insert race
+
+
+13. Missing Zod validation
+
+
+14. Potential stored XSS through review content
+
+
+
+
+---
+
+The most important architectural rule
+
+Your checkout should never trust these values from Android/web:
+
+❌ price
+❌ subtotal
+❌ discount
+❌ tax
+❌ shipping
+❌ total
+❌ coupon discount
+
+The client should send only something like:
+
+{
+  "items": [
+    {
+      "productId": "abc",
+      "quantity": 2
+    }
+  ],
+  "coupon": "SAVE20"
+}
+
+Then your backend calculates:
+
+Database product prices
+        ↓
+Stock validation
+        ↓
+Subtotal
+        ↓
+Coupon validation
+        ↓
+Discount
+        ↓
+Tax
+        ↓
+Shipping
+        ↓
+FINAL TOTAL
+        ↓
+Payment provider
+        ↓
+Server-side payment verification
+        ↓
+Create/confirm order
+
+This is the next area I would fix before connecting Paystack/Flutterwave/Stripe.

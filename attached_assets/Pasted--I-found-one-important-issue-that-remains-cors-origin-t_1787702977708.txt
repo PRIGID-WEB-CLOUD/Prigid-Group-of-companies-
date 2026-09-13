@@ -1,0 +1,74 @@
+🔴 I found one important issue that remains
+cors({ origin: true, credentials: true })
+The API currently has:
+cors({
+  origin: true,
+  credentials: true
+})
+This means the server dynamically reflects the requesting origin while allowing credentials.
+For a cookie-authenticated admin API, I would not leave this open in production.
+You should explicitly configure the allowed frontend origin:
+const allowedOrigins = [
+  "https://your-admin-domain.com",
+  "https://your-store-domain.com",
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error("CORS origin not allowed"));
+  },
+  credentials: true,
+}));
+This is particularly important because your authentication uses cookies.
+🟠 Another issue: rate limiting implementation
+The new rate limiter is database-backed, which is a good improvement, but it increments the counter even when a request is already blocked:
+if (entry.count >= limit) {
+  ... count: entry.count + 1
+  return true;
+}
+That isn't a security bypass, but it means abusive clients can continuously increase the counter indefinitely.
+A cleaner implementation should simply return true without incrementing once the limit has been reached.
+🟠 Admin bootstrap secret comparison
+The bootstrap endpoint now does:
+provided secret
+      ↓
+SHA-256
+      ↓
+timingSafeEqual
+which is reasonable.
+However, there is no rate limiting on the bootstrap endpoint.
+Because it is a high-value endpoint, add:
+bootstrap:ip → 5 attempts / 15 minutes
+even though the secret itself is strong.
+🟡 Development authentication bypass needs discipline
+This is controlled by:
+NODE_ENV !== "production" && AUTH_DEV_BYPASS === "true"
+and exposes devCode / devToken when enabled.
+That's acceptable for development, but I'd add an explicit startup warning:
+⚠️ AUTH_DEV_BYPASS ENABLED — DEVELOPMENT ONLY
+and ideally refuse to start if:
+NODE_ENV=production
+AUTH_DEV_BYPASS=true
+The current boolean already prevents the dev response in production, which is good.
+🟢 Startup/error handling looks better
+The API now has a global Express error handler:
+request
+ ↓
+route throws
+ ↓
+global error middleware
+ ↓
+logger.error()
+ ↓
+500 Internal server error
+And startup failures are caught and logged as fatal.
+That's good.
+🟠 One architectural issue remains
+index.ts calls:
+await ensureDefaults();
+every time the API starts.
+This isn't inherently wrong, but initialization/seed logic should ideally be idempotent and migration-controlled.
+If ensureDefaults() performs multiple database operations, a deployment where two instances start simultaneously should not accidentally create duplicates or race.

@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "Mail": {
+      "title": "Mail",
+      "description": "Outbound email queue document for transactional email delivery.",
+      "type": "object",
+      "properties": {
+        "to": {
+          "type": "string",
+          "description": "Recipient email address",
+          "maxLength": 320
+        },
+        "message": {
+          "type": "object",
+          "description": "Email message payload containing subject, text, and optional html."
+        },
+        "delivery": {
+          "type": "object",
+          "description": "Delivery tracking metadata including state and start timestamp."
+        }
+      },
+      "required": ["to", "message", "delivery"]
+    }
+  },
+  "firestore": {
+    "/mail/{mailId}": {
+      "schema": "Mail",
+      "description": "Collection storing transactional email documents to be dispatched by email triggers."
+    }
+  }
+}

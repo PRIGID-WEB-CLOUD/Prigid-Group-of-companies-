@@ -1,0 +1,62 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import authRouter from "./auth";
+import storeRouter from "./store";
+import newsletterRouter from "./newsletter";
+import ecommerceRouter from "./ecommerce";
+import settingsRouter from "./settings";
+import channelsRouter from "./channels";
+import metaBusinessRouter from "./meta-business";
+import facebookRouter from "./facebook";
+import twitterRouter from "./twitter";
+import whatsappRouter from "./whatsapp";
+import pushTokensRouter from "./push-tokens";
+import adminStatsRouter from "./admin-stats";
+import eventsRouter from "./events";
+import eproloRouter from "./eprolo";
+import lowStockRouter from "./low-stock";
+import uploadRouter from "./upload";
+import tiktokRouter from "./tiktok";
+import pinterestRouter from "./pinterest";
+import klaviyoRouter from "./klaviyo";
+import ga4Router from "./ga4";
+import dhlRouter from "./dhl";
+import paypalRouter from "./paypal";
+import webhooksRouter from "./webhooks";
+import chatRouter from "./chat";
+import geolocationRouter from "./geolocation";
+
+import paymentsRouter from "./payments";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(geolocationRouter);
+router.use(webhooksRouter);
+router.use("/payments", paymentsRouter);
+router.use(authRouter);
+router.use(uploadRouter);
+router.use(eventsRouter);
+router.use(storeRouter);
+router.use(adminStatsRouter);
+router.use(newsletterRouter);
+router.use(ecommerceRouter);
+router.use(settingsRouter);
+router.use(channelsRouter);
+router.use(metaBusinessRouter);
+router.use(facebookRouter);
+router.use(twitterRouter);
+router.use(whatsappRouter);
+router.use(pushTokensRouter);
+router.use(eproloRouter);
+router.use(lowStockRouter);
+router.use(tiktokRouter);
+router.use(pinterestRouter);
+router.use(klaviyoRouter);
+router.use(ga4Router);
+router.use(dhlRouter);
+router.use(paypalRouter);
+router.use(chatRouter);
+
+
+export default router;

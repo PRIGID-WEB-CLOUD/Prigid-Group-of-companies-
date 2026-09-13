@@ -1,0 +1,305 @@
+[Email Service] Loaded Firebase configuration for Firestore REST API on backend.
+(node:2660) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[10:06:11.440] [32mINFO[39m (2660): [36mServer listening[39m
+    [35mport[39m: 5001
+[Email Service REST] Failed to write email document to Firestore collection: Firestore REST returned status 403: {
+  "error": {
+    "code": 403,
+    "message": "Missing or insufficient permissions.",
+    "status": "PERMISSION_DENIED"
+  }
+}
+
+[Email Service Fallback] Dispatched to: prigidholdings@gmail.com | Subject: "Your Luxe Boutique admin sign-in code"
+[Email Service Fallback Body]: Your Luxe Boutique admin sign-in code is 623388. It expires in 10 minutes.
+[WhatsApp Service] Dispatched to +prigidholdings@gmail.com:
+*[LUXE BOUTIQUE | SECURITY VERIFICATION]*
+_Executive Security Desk_
+
+Your single-use sign-in verification code is:
+
+*623388*
+
+This code expires in *10 minutes*. Never share this code with anyone.
+
+_Luxe Boutique Security Desk_
+[10:06:16.265] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 1,
+      "method": "POST",
+      "url": "/api/auth/admin/request-otp"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 2007
+[10:06:21.382] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 2,
+      "method": "POST",
+      "url": "/api/auth/admin/verify-otp"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 784
+[10:07:29.153] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 3,
+      "method": "GET",
+      "url": "/api/auth/me"
+    }
+    [35mres[39m: {
+      "statusCode": 401
+    }
+    [35mresponseTime[39m: 3
+[10:07:30.036] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 4,
+      "method": "GET",
+      "url": "/api/auth/admin/exists"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 882
+[10:09:20.661] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 8,
+      "method": "GET",
+      "url": "/api/auth/me"
+    }
+    [35mres[39m: {
+      "statusCode": 401
+    }
+    [35mresponseTime[39m: 1
+[10:09:21.367] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 7,
+      "method": "GET",
+      "url": "/api/cart"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 712
+[10:09:21.384] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 9,
+      "method": "GET",
+      "url": "/api/products"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 721
+[10:09:21.418] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 10,
+      "method": "GET",
+      "url": "/api/posts"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 751
+[10:09:21.424] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 6,
+      "method": "GET",
+      "url": "/api/store/branding"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 774
+[10:09:21.480] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 5,
+      "method": "GET",
+      "url": "/api/m-config"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 836
+[10:11:48.982] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 11,
+      "method": "GET",
+      "url": "/api/auth/me"
+    }
+    [35mres[39m: {
+      "statusCode": 401
+    }
+    [35mresponseTime[39m: 2
+[10:11:49.697] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 12,
+      "method": "GET",
+      "url": "/api/store/branding"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 712
+[10:11:49.716] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 15,
+      "method": "GET",
+      "url": "/api/posts"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 723
+[10:11:49.725] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 13,
+      "method": "GET",
+      "url": "/api/cart"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 738
+[10:11:49.728] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 16,
+      "method": "GET",
+      "url": "/api/products"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 733
+[10:11:49.856] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 14,
+      "method": "GET",
+      "url": "/api/m-config"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 867
+[10:11:57.934] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 18,
+      "method": "GET",
+      "url": "/api/auth/me"
+    }
+    [35mres[39m: {
+      "statusCode": 401
+    }
+    [35mresponseTime[39m: 0
+[10:11:58.040] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 19,
+      "method": "GET",
+      "url": "/api/products"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 105
+[10:11:58.045] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 17,
+      "method": "GET",
+      "url": "/api/store/branding"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 113
+[10:11:58.046] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 21,
+      "method": "GET",
+      "url": "/api/cart"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 107
+[10:11:58.048] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 22,
+      "method": "GET",
+      "url": "/api/posts"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 108
+[10:11:58.159] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 20,
+      "method": "GET",
+      "url": "/api/m-config"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 222
+[Email Service REST] Failed to write email document to Firestore collection: Firestore REST returned status 403: {
+  "error": {
+    "code": 403,
+    "message": "Missing or insufficient permissions.",
+    "status": "PERMISSION_DENIED"
+  }
+}
+
+[Email Service Fallback] Dispatched to: prigidholdings@gmail.com | Subject: "Your Luxe Boutique admin sign-in code"
+[Email Service Fallback Body]: Your Luxe Boutique admin sign-in code is 501804. It expires in 10 minutes.
+[WhatsApp Service] Dispatched to +prigidholdings@gmail.com:
+*[LUXE BOUTIQUE | SECURITY VERIFICATION]*
+_Executive Security Desk_
+
+Your single-use sign-in verification code is:
+
+*501804*
+
+This code expires in *10 minutes*. Never share this code with anyone.
+
+_Luxe Boutique Security Desk_
+[10:12:22.124] [32mINFO[39m (2660): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 23,
+      "method": "POST",
+      "url": "/api/auth/admin/request-otp"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 2591
+[Email Service REST] Failed to write email document to Firestore collection: Firestore REST returned status 403: {
+  "error": {
+    "code": 403,
+    "message": "Missing or insufficient permissions.",
+    "status": "PERMISSION_DENIED"
+  }
+}
+
+[Email Service Fallback] Dispatched to: prigidholdings@gmail.com | Subject: "Your Luxe Boutique admin sign-in code"
+[Email Service Fallback Body]: Your Luxe Boutique admin sign-in code is 218881. It expires in 10 minutes.
+[WhatsApp Service] Dispatched to +prigidholdings@gmail.com:
+*[LUXE BOUTIQUE | SECURITY VERIFICATION]*
+_Executive Security Desk_
+
+Your single-use sign-in verification code is:
+
+*218881*
+
+This code expires in *10 minutes*. Never share this code with anyone.
+
+_Luxe Boutique Security Desk_

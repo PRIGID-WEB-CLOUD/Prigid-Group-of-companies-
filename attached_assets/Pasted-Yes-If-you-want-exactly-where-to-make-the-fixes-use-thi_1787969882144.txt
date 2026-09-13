@@ -1,0 +1,383 @@
+Yes. If you want exactly where to make the fixes, use this file-by-file order.
+
+🔴 1. Payment system — FIRST
+
+File:
+
+artifacts/api-server/src/routes/ecommerce.ts
+
+Fix these endpoints:
+
+POST /payments/initialize
+GET  /payments/verify/:reference
+
+They currently return 501.
+
+Also add a payment webhook route, e.g.:
+
+POST /payments/webhook/paystack
+
+
+---
+
+🔴 2. Checkout/order lifecycle
+
+Same file:
+
+artifacts/api-server/src/routes/ecommerce.ts
+
+Main section:
+
+POST /orders
+
+Change the current flow from:
+
+Create order
+→ reduce stock
+→ consume coupon
+→ Eprolo
+
+to:
+
+Initialize payment
+→ customer pays
+→ verify/webhook
+→ mark PAID
+→ reduce stock
+→ consume coupon
+→ Eprolo
+
+This is the highest-priority code change.
+
+
+---
+
+🔴 3. Eprolo
+
+Files to inspect/change:
+
+artifacts/api-server/src/routes/ecommerce.ts
+artifacts/api-server/src/services/
+
+Find:
+
+tryAutoForwardToEprolo
+
+It must only run when:
+
+paymentStatus === "PAID"
+
+Also fix the Eprolo variant mapping and remove the default:
+
+New York
+NY
+10001
+US
+
+
+---
+
+🔴 4. Payment database
+
+File:
+
+lib/db/src/schema/index.ts
+
+Modify/add:
+
+payment_status
+payment_provider
+payment_reference
+paid_at
+
+Preferably create a proper payment transaction relationship:
+
+orders
+   ↓
+payment_transactions
+
+
+---
+
+🔴 5. Order items
+
+File:
+
+lib/db/src/schema/index.ts
+
+Replace the long-term dependence on:
+
+orders.items JSONB
+
+with:
+
+order_items
+
+containing:
+
+orderId
+productId
+variantId
+sku
+productName
+unitPrice
+quantity
+total
+
+
+---
+
+🔴 6. Shipping address
+
+File:
+
+lib/db/src/schema/index.ts
+
+Add to orders:
+
+shippingAddress
+billingAddress
+
+Then update:
+
+artifacts/api-server/src/routes/ecommerce.ts
+
+to save the address when creating the order.
+
+
+---
+
+🔴 7. Product variants
+
+File:
+
+artifacts/api-server/src/routes/ecommerce.ts
+
+Change checkout from:
+
+{
+  "productId": "...",
+  "quantity": 1
+}
+
+to:
+
+{
+  "productId": "...",
+  "variantId": "...",
+  "quantity": 1
+}
+
+Then make inventory operate on the variant, when a variant exists.
+
+
+---
+
+🔴 8. Variant authorization bug
+
+File:
+
+artifacts/api-server/src/routes/ecommerce.ts
+
+For:
+
+PUT /products/:id/variants/:variantId
+DELETE /products/:id/variants/:variantId
+
+make sure the variant belongs to the product:
+
+WHERE id = variantId
+AND product_id = productId
+
+
+---
+
+🔴 9. Provider secrets
+
+Files:
+
+lib/db/src/schema/index.ts
+artifacts/api-server/src/routes/settings.ts
+
+Currently provider credentials such as:
+
+apiKey
+apiSecret
+
+need encryption at rest.
+
+Use your existing credential encryption system instead of storing provider secrets directly.
+
+
+---
+
+🔴 10. Settings API
+
+File:
+
+artifacts/api-server/src/routes/settings.ts
+
+Do not return:
+
+smtp_pass
+apiSecret
+cloudinary_api_secret
+private credentials
+
+Create a safe response DTO.
+
+Return:
+
+{
+  "smtpConfigured": true
+}
+
+not the actual password.
+
+
+---
+
+🟠 11. Authentication rate limiting
+
+File:
+
+artifacts/api-server/src/routes/auth.ts
+
+Add rate limiting to:
+
+POST /auth/login
+POST /auth/register
+
+You already have rate-limit infrastructure for OTP/reset, so reuse it.
+
+
+---
+
+🟠 12. Public products
+
+File:
+
+artifacts/api-server/src/routes/ecommerce.ts
+
+For public:
+
+GET /products
+GET /products/:id
+
+only expose:
+
+status = ACTIVE
+
+Admin endpoints can see all statuses.
+
+
+---
+
+🟠 13. Reviews
+
+Files:
+
+artifacts/api-server/src/routes/ecommerce.ts
+lib/db/src/schema/index.ts
+
+Add:
+
+reviews.userId
+
+Then verify:
+
+user → paid order → product
+
+before allowing a verified review.
+
+
+---
+
+🟠 14. API keys
+
+Files:
+
+lib/db/src/schema/index.ts
+artifacts/api-server/src/routes/
+
+Don't permanently store the complete API key as rawKey.
+
+Store:
+
+keyHash
+keyPrefix
+
+and show the complete key only once.
+
+
+---
+
+🟠 15. Newsletter
+
+File:
+
+artifacts/api-server/src/routes/newsletter.ts
+
+The current /newsletter/send should eventually become:
+
+campaign
+ ↓
+recipient queue
+ ↓
+email worker
+ ↓
+SMTP
+ ↓
+delivered / failed
+ ↓
+retry
+
+Don't send a huge campaign directly inside an HTTP request.
+
+
+---
+
+🟠 16. SMTP
+
+File:
+
+artifacts/api-server/src/services/mailer.ts
+
+Add:
+
+connection timeout
+command timeout
+overall timeout
+
+The current custom SMTP implementation is a good foundation, but production mail delivery needs timeout/retry handling.
+
+
+---
+
+📁 So your main fix list is
+
+Pcb/
+│
+├── artifacts/
+│   └── api-server/
+│       └── src/
+│           ├── routes/
+│           │   ├── ecommerce.ts       🔴 MAIN FIX
+│           │   ├── auth.ts            🟠
+│           │   ├── settings.ts        🔴
+│           │   └── newsletter.ts      🟠
+│           │
+│           └── services/
+│               └── mailer.ts          🟠
+│
+└── lib/
+    └── db/
+        └── src/
+            └── schema/
+                └── index.ts           🔴 DATABASE FIXES
+
+If you're going to fix it systematically, start here:
+
+artifacts/api-server/src/routes/ecommerce.ts
+
+That single file contains the most important problems: payments, checkout, inventory, coupons, variants and Eprolo fulfillment. After that, fix lib/db/src/schema/index.ts to support the corrected architecture.

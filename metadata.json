@@ -1,0 +1,12 @@
+{
+  "name": "Prigid Commerce Group ",
+  "description": "Prigid Group of companies service ",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

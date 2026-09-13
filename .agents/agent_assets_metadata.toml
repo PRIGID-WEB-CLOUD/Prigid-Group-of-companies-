@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "Nw0CDq5tOzkvj0KPl7Rpk"
+uri = "file://artifacts/luxe-boutique-mobile/assets/images/icon.png"
+type = "image"
+title = "generated_image"

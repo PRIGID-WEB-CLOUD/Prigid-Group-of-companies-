@@ -1,0 +1,972 @@
+Worked for 16s
+
+I went another level deeper into the current main branch, including the newest commit. This changes a few conclusions from the previous audit: the email service has now been implemented, and request-size limits are already present. The newest commit is from August 29, 2026.
+
+[Open current Pcb repository](https://github.com/PRIGID-WEB-CLOUD/Pcb?utm_source=chatgpt.com)
+
+🔬 Deepest inspection so far
+
+🔴 P0 — Payment/order architecture
+
+1. Payment endpoints are still 501
+
+ecommerce.ts currently has:
+
+POST /payments/initialize → 501
+GET  /payments/verify/:reference → 501
+
+So the payment engine is still not implemented.
+
+Fix: implement one provider completely first, preferably Paystack if Ghana is the primary market.
+
+
+---
+
+2. Order creation is happening before payment
+
+POST /orders immediately:
+
+validates products
+
+decrements stock
+
+increments coupon usage
+
+creates a PENDING order
+
+publishes new_order
+
+starts Eprolo fulfillment.
+
+
+This is the most serious business-logic flaw.
+
+It should not be possible for:
+
+unpaid customer
+      ↓
+stock decreases
+      ↓
+coupon consumed
+      ↓
+Eprolo receives order
+
+Correct it to:
+
+Checkout
+ ↓
+Create payment transaction
+ ↓
+Customer pays
+ ↓
+Provider webhook
+ ↓
+Verify webhook/signature
+ ↓
+DB transaction
+ ├─ payment = PAID
+ ├─ order = PAID/PROCESSING
+ ├─ reserve/decrement stock
+ └─ consume coupon
+ ↓
+Eprolo
+
+
+---
+
+🔴 P0 — Eprolo fulfillment
+
+3. Eprolo is triggered without payment confirmation
+
+This is explicit:
+
+tryAutoForwardToEprolo(order, ...)
+
+is called immediately after order creation and is fire-and-forget.
+
+That means a failed payment can potentially still produce an Eprolo fulfillment request.
+
+Fix: Eprolo must only execute after a verified PAID event.
+
+
+---
+
+4. Eprolo receives the wrong identifier for variants
+
+Your local order items contain:
+
+productId
+name
+qty
+price
+
+but Eprolo expects:
+
+variantsid
+
+The code currently maps:
+
+variantId: i.productId ?? i.id
+
+That's a major integration concern.
+
+A local product ID is not necessarily an Eprolo variant ID.
+
+Fix: store:
+
+eproloProductId
+eproloVariantId
+
+on the product/variant mapping.
+
+Then send the actual Eprolo variant ID.
+
+
+---
+
+5. Fake shipping addresses are still present
+
+If address data is missing, Eprolo gets:
+
+New York
+NY
+10001
+United States
+US
+
+This must be removed.
+
+For a real Ghanaian customer, missing address data could otherwise result in an invalid fulfillment destination.
+
+Fix:
+
+Missing address
+      ↓
+400/422
+      ↓
+Do NOT create Eprolo order
+
+
+---
+
+🔴 P0 — Secrets
+
+6. Provider credentials are still plaintext in DB
+
+providerPluginsTable contains:
+
+apiKey
+apiSecret
+
+as database fields, while settings.ts writes them directly.
+
+The response is masked, which is good, but masking the API response doesn't protect the database.
+
+Fix
+
+Encrypt at rest:
+
+AES-256-GCM
+
+using your dedicated:
+
+CREDENTIAL_ENCRYPTION_KEY
+
+Then decrypt only immediately before calling the provider.
+
+
+---
+
+7. API keys are still recoverable from the database
+
+apiKeys stores rawKey.
+
+The endpoint intentionally hides it from subsequent listing, but the database itself still has the original secret.
+
+Better:
+
+Customer gets:
+pk_live_xxxxxxxxx
+
+Database:
+key_hash
+key_prefix
+name
+created_at
+revoked_at
+
+Use a cryptographic hash/HMAC for verification.
+
+
+---
+
+🔴 P1 — Settings
+
+8. /settings returns every application setting
+
+This is still a concern.
+
+const settings = await readSettings();
+return res.json({ settings, status: configured(settings) });
+
+And readSettings() loads all application settings.
+
+That potentially includes:
+
+smtp_pass
+cloudinary_api_secret
+
+etc.
+
+Even though the route is protected by requireAdmin, an admin frontend does not need to receive plaintext credentials.
+
+Fix
+
+Create:
+
+public/admin settings DTO
+
+that returns only safe values and booleans such as:
+
+{
+  "smtp": {
+    "configured": true,
+    "host": "smtp.example.com",
+    "username": "..."
+  }
+}
+
+Never return:
+
+smtp_pass
+api_secret
+private_key
+
+
+---
+
+🟠 P1 — Authentication
+
+9. Admin bootstrap creates a passwordless SUPER_ADMIN
+
+This is subtle and important.
+
+Bootstrap creates:
+
+role: SUPER_ADMIN
+passwordHash: ""
+
+and then immediately calls:
+
+setSession()
+
+So the bootstrap operation itself becomes the initial authentication mechanism.
+
+That's acceptable for controlled first-time provisioning, but it needs to be explicitly treated as a one-time provisioning flow, not a normal account creation mechanism.
+
+Better
+
+Bootstrap secret
+ ↓
+Create SUPER_ADMIN
+ ↓
+Force password setup
+ ↓
+Invalidate bootstrap capability
+ ↓
+Require normal login + MFA
+
+
+---
+
+10. Login is not rate limited
+
+The OTP and password-reset endpoints have rate limiting.
+
+But /auth/login itself doesn't appear to call isRateLimited().
+
+That means an attacker can repeatedly submit:
+
+email + password
+
+against the login endpoint.
+
+Fix
+
+Add:
+
+login:email
+login:ip
+
+limits.
+
+Ideally use exponential backoff/temporary lockout without creating an easy account-enumeration oracle.
+
+
+---
+
+11. Registration isn't rate limited
+
+/auth/register also doesn't appear to use the rate limiter.
+
+This can enable:
+
+account spam
+
+database abuse
+
+automated registrations.
+
+
+Add IP/device/email throttling.
+
+
+---
+
+12. Session token is stored plaintext
+
+sessions.token is the actual session credential.
+
+If the database is compromised, active sessions can potentially be replayed.
+
+A stronger design is:
+
+Browser:
+random session token
+
+DB:
+SHA-256(session token)
+
+Then hash incoming tokens before lookup.
+
+This isn't necessarily a launch blocker, but it is a good security upgrade.
+
+
+---
+
+🟠 P1 — Checkout
+
+13. Duplicate product IDs can double-decrement inventory
+
+Checkout accepts:
+
+{
+  "items": [
+    {"productId":"A","quantity":2},
+    {"productId":"A","quantity":2}
+  ]
+}
+
+There is no normalization step combining duplicate product IDs. The transaction processes each item separately.
+
+So the same product can be decremented twice.
+
+Fix
+
+Normalize first:
+
+A × 2
+A × 2
+ ↓
+A × 4
+
+Then validate/reserve once.
+
+
+---
+
+14. Checkout ignores product variants
+
+The schema only accepts:
+
+productId
+quantity
+
+Yet your database has:
+
+product_variants
+
+with:
+
+size
+
+color
+
+SKU
+
+stock
+
+price.
+
+
+So the backend cannot reliably know:
+
+> Black / XL
+
+
+
+was purchased.
+
+Fix
+
+Use:
+
+{
+  "productId": "...",
+  "variantId": "...",
+  "quantity": 1
+}
+
+and reserve the variant's stock.
+
+
+---
+
+15. Shipping address isn't stored in the order
+
+The address is accepted in checkout:
+
+shippingAddress
+
+but the order model shown doesn't contain a shipping-address field.
+
+That means your order history isn't self-contained.
+
+Fix
+
+Persist an immutable snapshot:
+
+shipping_address JSONB
+billing_address JSONB
+
+inside the order.
+
+
+---
+
+🟠 P1 — Coupons
+
+16. Coupon can be consumed without payment
+
+/coupons/redeem directly increments usedCount.
+
+Checkout also increments it.
+
+So you have two concepts:
+
+validate
+redeem
+
+but neither is tied to a successful payment.
+
+Better
+
+Remove public coupon consumption from the checkout lifecycle.
+
+Use:
+
+validate coupon
+       ↓
+payment
+       ↓
+successful webhook
+       ↓
+consume coupon
+
+
+---
+
+17. Coupon discount uses application-side numeric conversion
+
+The DB uses numeric columns, but code repeatedly converts them through:
+
+Number(...)
+
+For currency/discount calculations, I'd standardize the monetary representation.
+
+
+---
+
+🟠 P1 — Products
+
+18. Public API returns DRAFT and ARCHIVED products
+
+GET /products returns all products.
+
+It does not restrict public results to:
+
+ACTIVE
+
+Likewise, GET /products/:id can expose non-active products.
+
+Fix
+
+Public:
+
+status = ACTIVE
+
+Admin:
+
+all
+
+
+---
+
+19. Product variants have insufficient validation
+
+Variant creation directly does:
+
+Number(req.body.stock)
+Number(req.body.price)
+
+Use Zod with:
+
+stock >= 0
+price >= 0
+SKU length limits
+size limits
+color limits
+
+
+---
+
+20. Variant update doesn't verify parent product
+
+PUT /products/:id/variants/:variantId updates by variantId alone.
+
+So theoretically:
+
+PUT /products/A/variants/VARIANT_FROM_PRODUCT_B
+
+could update Product B's variant.
+
+Fix
+
+Require:
+
+variant.id = :variantId
+AND variant.product_id = :id
+
+Same issue should be checked on DELETE.
+
+This is a real authorization/data-integrity bug.
+
+
+---
+
+🔴 P1 — Reviews
+
+21. Anyone authenticated can review without proving purchase
+
+The review endpoint checks authentication but doesn't check whether the user purchased the product.
+
+If you want a trustworthy marketplace:
+
+user
+ ↓
+paid order
+ ↓
+product exists in order
+ ↓
+review allowed
+
+
+---
+
+22. Reviews aren't associated with the user
+
+The table has:
+
+productId
+rating
+comment
+authorName
+
+but no userId.
+
+That means you can't reliably implement:
+
+verified purchase
+
+edit my review
+
+delete my review
+
+one review per customer
+
+abuse tracking.
+
+
+Add:
+
+userId → users.id
+
+
+---
+
+🟠 P1 — Newsletter
+
+23. Newsletter subscription has weak validation
+
+The endpoint accepts an email if:
+
+email.includes("@")
+
+That's much weaker than the Zod email validation used elsewhere.
+
+Use a proper email schema.
+
+
+---
+
+24. Newsletter campaigns aren't actually sending
+
+POST /newsletter/send only creates a campaign and responds:
+
+Campaign saved. Configure SMTP before sending email.
+
+So this is currently a campaign management placeholder, not a mailing system.
+
+There's no:
+
+recipient queue
+delivery worker
+per-recipient status
+retry
+bounce handling
+unsubscribe handling
+
+For production
+
+Build:
+
+campaign
+ ↓
+queue
+ ↓
+worker
+ ↓
+SMTP
+ ↓
+delivered/failed
+ ↓
+retry
+
+Don't send 100,000 emails inside one HTTP request.
+
+
+---
+
+🟠 P1 — SMTP implementation
+
+The new custom SMTP service is a good move, but I found things to harden.
+
+mailer.ts implements SMTP manually with:
+
+TCP
+
+TLS
+
+STARTTLS
+
+AUTH LOGIN
+
+MIME.
+
+
+Problems to address
+
+No explicit connection timeout.
+
+A mail server that accepts the TCP connection but never responds could hold the request open.
+
+Add:
+
+connection timeout
+command timeout
+overall send timeout
+
+Also consider supporting more authentication methods if your target SMTP providers require them.
+
+
+---
+
+🟡 P2 — Database
+
+25. orders.customerId has no foreign key
+
+The schema has:
+
+customerId
+
+but it isn't shown with a reference to users.
+
+This makes customer order history harder to enforce.
+
+Use:
+
+customer_id → users.id
+
+with appropriate deletion behavior.
+
+
+---
+
+26. Order items should become a real table
+
+The current:
+
+items JSONB
+
+is workable for a small system, but not ideal for your long-term commerce platform.
+
+Create:
+
+order_items
+
+with:
+
+id
+order_id
+product_id
+variant_id
+sku
+product_name_snapshot
+unit_price
+quantity
+line_total
+
+This gives you proper analytics, refunds and inventory reconciliation.
+
+
+---
+
+🟡 P2 — Content / media
+
+27. Media model doesn't enforce ownership
+
+media_items stores:
+
+filename
+url
+mimeType
+size
+
+but no uploader/user ownership is shown.
+
+For an admin content system, add:
+
+uploadedBy
+
+and storage-provider metadata.
+
+
+---
+
+28. Blog status needs a database constraint
+
+The schema defines blog status as a free text field.
+
+Unlike products/orders, it doesn't have an explicit allowed-value check.
+
+Use:
+
+DRAFT
+PUBLISHED
+ARCHIVED
+
+with a DB constraint.
+
+
+---
+
+🟡 P2 — API architecture
+
+29. API documentation/contracts need continuous synchronization
+
+You have separate:
+
+api-server
+api-client-react
+api-spec
+api-zod
+
+which is good architecture.
+
+But with this many endpoints, CI should verify that the API implementation and generated/client contracts remain synchronized.
+
+
+---
+
+🟢 Important corrections to my earlier audit
+
+After inspecting the latest commit, these previous concerns are now improved:
+
+Email delivery
+
+The new commit explicitly says:
+
+> Implement email delivery service and update authentication and channel routes.
+
+
+
+And auth.ts now calls sendEmail() for:
+
+admin OTP
+
+password reset.
+
+
+So password-reset delivery is no longer missing.
+
+Request limits
+
+app.ts now has:
+
+JSON: 256 KB
+URL encoded: 64 KB
+parameterLimit: 100
+
+So my previous statement that body limits were missing is outdated.
+
+
+---
+
+🚨 Final priority map
+
+🔴 Must fix before live launch
+
+1. Implement payment provider
+
+
+2. Move inventory reservation after verified payment
+
+
+3. Move coupon consumption after verified payment
+
+
+4. Prevent Eprolo fulfillment before payment
+
+
+5. Correct Eprolo variant mapping
+
+
+6. Remove fake New York shipping defaults
+
+
+7. Encrypt provider secrets at rest
+
+
+8. Never return sensitive settings
+
+
+9. Rate-limit login
+
+
+10. Fix variant parent/child authorization
+
+
+11. Persist shipping address
+
+
+12. Add payment status
+
+
+13. Prevent duplicate checkout items
+
+
+14. Add proper variant checkout support
+
+
+
+🟠 Should fix before serious scaling
+
+15. Order-items table
+
+
+16. Customer/order foreign key
+
+
+17. Verified-purchase reviews
+
+
+18. Review userId
+
+
+19. Public product status filtering
+
+
+20. Variant Zod validation
+
+
+21. Coupon lifecycle
+
+
+22. Newsletter delivery queue
+
+
+23. SMTP timeouts
+
+
+24. API-key hashing
+
+
+25. Session-token hashing
+
+
+
+🟡 Cleanup / hardening
+
+26. Blog status constraints
+
+
+27. Media ownership
+
+
+28. .migration-backup cleanup
+
+
+29. .agents cleanup
+
+
+30. CI security/dependency checks
+
+
+31. API contract consistency tests
+
+
+
+
+---
+
+🏆 Current assessment
+
+After this deeper pass:
+
+Architecture: 8.5/10 🟢
+
+Security foundation: 7.5/10 🟢
+
+Authentication: 8/10 🟢
+
+Commerce logic: 5.5/10 🔴
+
+Payments: 2/10 🔴
+
+Fulfillment: 4/10 🔴
+
+Database: 7.5/10 🟢
+
+Email infrastructure: 7/10 🟢
+
+Production readiness: 6/10 🟠
+
+The key conclusion:
+
+Pcb doesn't need a rewrite. It needs the transaction lifecycle fixed.
+
+The most dangerous section is currently:
+
+Checkout → Order → Inventory → Coupon → Eprolo
+
+That entire chain should be redesigned around verified payment + idempotent webhook + database transaction before you put real customers through it.

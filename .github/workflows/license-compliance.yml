@@ -1,0 +1,35 @@
+name: License & Tier Compliance Check (Manual)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  license-check:
+    name: Verify Package Tiers & License Adherence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install || npm install
+
+      - name: Verify Commercial Licenses & Package Tier Restraints
+        run: node scripts/verify-license-tier.mjs --all
+
+      - name: Audit Workspaces & Types
+        run: npm run typecheck:all

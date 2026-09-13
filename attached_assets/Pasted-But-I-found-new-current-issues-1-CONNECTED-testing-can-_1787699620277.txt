@@ -1,0 +1,84 @@
+But I found new/current issues
+1. CONNECTED testing can still bypass initialization
+The /test endpoint directly updates:
+channel_configs
+without first ensuring that the requested channel exists.
+If the row doesn't exist, the update affects zero rows, but the API still returns a successful test response.
+Fix: verify the config row exists and return 404 if it doesn't.
+2. sync requires CONNECTED before it can repair a broken connection
+The current flow is:
+if config.status !== CONNECTED
+    → 409
+Then it performs the live provider check.
+This means a channel marked DISCONNECTED cannot use the sync endpoint to reconnect/revalidate itself.
+You have to use /test first.
+That's not necessarily a security bug, but it's an awkward state machine.
+I'd recommend:
+TEST
+ └── validates credentials/provider
+      └── CONNECTED
+
+SYNC
+ └── can run on CONNECTED
+      └── actual synchronization
+That's clearer.
+3. auditActor() causes an extra database query
+Every credential update/clear does:
+requireAdmin
+   ↓
+getSessionUser()
+   ↓
+auditActor()
+      ↓
+getSessionUser() again
+The current implementation calls getSessionUser(req) again just to create the audit actor.
+This is inefficient.
+Better: have requireAdmin attach the authenticated user to req, then reuse it.
+4. Credential encryption depends on SESSION_SECRET
+This is currently:
+SESSION_SECRET
+     ↓
+SHA-256
+     ↓
+AES-256-GCM key
+It works cryptographically, but I would not use the session secret as your long-term encryption key.
+Use a dedicated:
+CREDENTIAL_ENCRYPTION_KEY
+instead.
+Why?
+If you ever rotate/change SESSION_SECRET, previously encrypted provider credentials become undecryptable.
+This is a production architecture issue, not an immediate code failure.
+5. Secret migration happens inside getChannelCredentials()
+This is clever:
+read old plaintext
+↓
+decrypt/return
+↓
+persist encrypted version
+But it means a GET/test operation can perform a database write.
+I'd move migration into a dedicated migration script/job.
+6. The Twitter integration is probably incomplete
+The test only requires:
+bearer_token
+even though the credential schema supports:
+api_key
+api_secret
+access_token
+access_token_secret
+bearer_token
+and the Twitter test only calls:
+GET /2/users/me
+So this verifies read access, but doesn't prove the app has the credentials required for posting.
+If the dashboard promises full Twitter/X publishing, this isn't a complete connection test.
+7. sync still isn't really "synchronization" in the business sense
+This is better than before: it now makes a real provider API call.
+However, the provider check mostly verifies the external account and returns account information. It doesn't actually synchronize products/posts/orders/etc.
+So I'd rename the current operation internally to something like:
+verifyConnection()
+and implement separate:
+syncProducts()
+syncOrders()
+syncPosts()
+syncMessages()
+syncAnalytics()
+depending on the channel.
