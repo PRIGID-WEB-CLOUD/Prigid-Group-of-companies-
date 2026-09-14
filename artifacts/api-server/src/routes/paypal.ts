@@ -2,13 +2,16 @@ import { Router } from "express";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { db, appSettingsTable } from "@workspace/db";
 import { addEvent } from "./channels";
+import { and, eq } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
 // Public config for storefront PayPal checkout rendering (SDK client ID)
-router.get("/payments/paypal/public-config", async (_req, res) => {
+router.get("/payments/paypal/public-config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId;
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId || "store-main"));
     const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
     return res.json({
@@ -26,9 +29,10 @@ router.get("/payments/paypal/public-config", async (_req, res) => {
 // Admin-only PayPal management endpoints
 router.use("/payments/paypal", requireAdmin);
 
-router.get("/payments/paypal/config", async (_req, res) => {
+router.get("/payments/paypal/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
     const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
     return res.json({
@@ -45,7 +49,8 @@ router.get("/payments/paypal/config", async (_req, res) => {
   }
 });
 
-router.post("/payments/paypal/config", async (req, res) => {
+router.post("/payments/paypal/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
     const { clientId, clientSecret, environment, currency, payIn4Enabled, autoCapture } = req.body;
 
@@ -65,9 +70,9 @@ router.post("/payments/paypal/config", async (req, res) => {
       if (value !== undefined) {
         await db
           .insert(appSettingsTable)
-          .values({ key, value, updatedAt: new Date() })
+          .values({ key, value, storeId, updatedAt: new Date() })
           .onConflictDoUpdate({
-            target: appSettingsTable.key,
+            target: [appSettingsTable.storeId, appSettingsTable.key],
             set: { value, updatedAt: new Date() },
           });
       }
@@ -77,7 +82,8 @@ router.post("/payments/paypal/config", async (req, res) => {
       "paypal",
       "Configuration updated",
       "PayPal & Pay in 4 gateway configuration updated",
-      "info"
+      "info",
+      storeId
     );
 
     return res.json({ success: true, message: "PayPal settings saved successfully" });

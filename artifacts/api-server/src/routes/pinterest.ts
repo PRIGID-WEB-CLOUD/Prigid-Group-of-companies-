@@ -2,14 +2,17 @@ import { Router } from "express";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { db, appSettingsTable } from "@workspace/db";
 import { addEvent } from "./channels";
+import { and, eq } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
 router.use("/channels/pinterest", requireAdmin);
 
-router.get("/channels/pinterest/config", async (_req, res) => {
+router.get("/channels/pinterest/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
     const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
     return res.json({
@@ -26,7 +29,8 @@ router.get("/channels/pinterest/config", async (_req, res) => {
   }
 });
 
-router.post("/channels/pinterest/config", async (req, res) => {
+router.post("/channels/pinterest/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
     const { appId, appSecret, merchantId, verifiedDomain, richPinsEnabled, autoCreateBoards } = req.body;
 
@@ -46,9 +50,9 @@ router.post("/channels/pinterest/config", async (req, res) => {
       if (value !== undefined) {
         await db
           .insert(appSettingsTable)
-          .values({ key, value, updatedAt: new Date() })
+          .values({ key, value, storeId, updatedAt: new Date() })
           .onConflictDoUpdate({
-            target: appSettingsTable.key,
+            target: [appSettingsTable.storeId, appSettingsTable.key],
             set: { value, updatedAt: new Date() },
           });
       }
@@ -58,7 +62,8 @@ router.post("/channels/pinterest/config", async (req, res) => {
       "pinterest",
       "Settings updated",
       "Pinterest Lookbook & Catalog connector settings updated",
-      "info"
+      "info",
+      storeId
     );
 
     return res.json({ success: true, message: "Pinterest configuration saved successfully" });
@@ -67,13 +72,15 @@ router.post("/channels/pinterest/config", async (req, res) => {
   }
 });
 
-router.post("/channels/pinterest/sync-pins", async (_req, res) => {
+router.post("/channels/pinterest/sync-pins", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
     await addEvent(
       "pinterest",
       "Catalog Sync",
       "Synced catalog lookbooks to Pinterest Rich Pins.",
-      "sync"
+      "sync",
+      storeId
     );
 
     return res.json({

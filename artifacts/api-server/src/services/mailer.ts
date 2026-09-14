@@ -1,5 +1,5 @@
-import { db, appSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, appSettingsTable, storesTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 import nodemailer from "nodemailer";
@@ -10,6 +10,7 @@ type Email = {
   subject: string;
   text: string;
   html?: string;
+  storeId?: string;
 };
 
 // Load Firebase Config for Firestore REST API
@@ -39,9 +40,13 @@ try {
   console.error("[Email Service] Failed to read Firebase config:", e);
 }
 
-export async function getSmtpConfig() {
+export async function getSmtpConfig(storeId?: string) {
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const query = db.select().from(appSettingsTable);
+    if (storeId) {
+      query.where(eq(appSettingsTable.storeId, storeId));
+    }
+    const rows = await query;
     const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
 
     const host = process.env.SMTP_HOST || settings.smtp_host || "";
@@ -62,8 +67,10 @@ export async function getSmtpConfig() {
 }
 
 export async function sendEmail(email: Email): Promise<void> {
-  const fromAddress = await getConfiguredSender() || "concierge@luxeboutique.com";
-  const smtp = await getSmtpConfig();
+  const storeId = email.storeId || "store-main";
+  const fromAddress = await getConfiguredSender(storeId) || "concierge@luxeboutique.com";
+  const smtp = await getSmtpConfig(storeId);
+  const brand = await loadBrandingCache(storeId);
 
   if (smtp.isConfigured) {
     try {
@@ -78,17 +85,17 @@ export async function sendEmail(email: Email): Promise<void> {
       });
 
       await transporter.sendMail({
-        from: `"${(getBranding()?.store_name) || "LUXE Boutique"}" <${fromAddress}>`,
+        from: `"${brand.store_name}" <${fromAddress}>`,
         to: email.to,
         subject: email.subject,
         text: email.text,
         html: email.html || email.text,
       });
 
-      console.log(`[Email Service SMTP] Successfully dispatched email via SMTP (${smtp.host}) to: ${email.to}`);
+      console.log(`[Email Service SMTP] Successfully dispatched email for ${storeId} via SMTP (${smtp.host}) to: ${email.to}`);
       return;
     } catch (smtpErr: any) {
-      console.error(`[Email Service SMTP Error] Failed sending via SMTP:`, smtpErr?.message || smtpErr);
+      console.error(`[Email Service SMTP Error] Failed sending for ${storeId} via SMTP:`, smtpErr?.message || smtpErr);
       // Fallback to Firestore / Console
     }
   }
@@ -104,6 +111,7 @@ export async function sendEmail(email: Email): Promise<void> {
       const payload = {
         fields: {
           to: { stringValue: email.to },
+          storeId: { stringValue: storeId },
           message: {
             mapValue: {
               fields: {
@@ -145,42 +153,84 @@ export async function sendEmail(email: Email): Promise<void> {
 
       const resData = await response.json() as any;
       const docName = resData.name || "unknown";
-      console.log(`[Email Service] Triggered email via Firestore REST document: "${docName}" for recipient: ${email.to}`);
+      console.log(`[Email Service] Triggered email via Firestore REST for ${storeId} document: "${docName}" for recipient: ${email.to}`);
     } catch (error: any) {
-      console.error(`[Email Service REST] Failed to write email document to Firestore collection:`, error.message || error);
+      console.error(`[Email Service REST] Failed to write email for ${storeId} document to Firestore collection:`, error.message || error);
       // Fallback to console logging
-      console.log(`[Email Service Fallback] Dispatched to: ${email.to} | Subject: "${email.subject}"`);
+      console.log(`[Email Service Fallback] Store: ${storeId} | Dispatched to: ${email.to} | Subject: "${email.subject}"`);
       console.log(`[Email Service Fallback Body]: ${email.text}`);
     }
   } else {
-    console.log(`[Email Service Dev Log] Dispatched to: ${email.to} | Subject: "${email.subject}"`);
+    console.log(`[Email Service Dev Log] Store: ${storeId} | Dispatched to: ${email.to} | Subject: "${email.subject}"`);
     console.log(`[Email Service Dev Log Body]: ${email.text}`);
   }
 }
 
-export async function getConfiguredSender(): Promise<string> {
-  const rows = await db.select().from(appSettingsTable);
-  const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
-  return settings.store_email || "concierge@luxeboutique.com";
+export async function getConfiguredSender(storeId: string): Promise<string> {
+  const [row] = await db.select({ value: appSettingsTable.value })
+    .from(appSettingsTable)
+    .where(and(eq(appSettingsTable.key, "store_email"), eq(appSettingsTable.storeId, storeId)))
+    .limit(1);
+  return row?.value || "concierge@luxeboutique.com";
 }
 
-export async function getStoreUrl(): Promise<string> {
+export async function getStoreUrl(storeId: string): Promise<string> {
+  try {
+    // 1. Check storesTable for a custom domain or custom slug
+    const [store] = await db.select()
+      .from(storesTable)
+      .where(eq(storesTable.id, storeId))
+      .limit(1);
+
+    if (store) {
+      if (store.customDomain) {
+        const domain = store.customDomain.trim();
+        return /^https?:\/\//i.test(domain) ? domain : `https://${domain}`;
+      }
+
+      // If they have a slug, we can append it as a subdomain to the platform base domain
+      if (store.slug) {
+        const baseAppUrl = (process.env.PUBLIC_APP_URL || process.env.APP_URL || "").trim().replace(/\/$/, "");
+        if (baseAppUrl) {
+          try {
+            const urlObj = new URL(baseAppUrl);
+            const hostParts = urlObj.hostname.split(".");
+            // Use the base domain of the platform if possible (e.g. prigidcommerce.com)
+            const baseDomain = hostParts.slice(-2).join(".");
+            return `${urlObj.protocol}//${store.slug}.${baseDomain}`;
+          } catch {
+            // fallback if URL parsing fails
+            return `${baseAppUrl}/${store.slug}`;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`[Store URL Resolution] Failed to lookup store ${storeId}:`, error);
+  }
+
+  // 2. Fallback to settings table
   const [row] = await db.select({ value: appSettingsTable.value })
-    .from(appSettingsTable).where(eq(appSettingsTable.key, "store_url")).limit(1);
-  const raw = process.env.PUBLIC_APP_URL || process.env.APP_URL || row?.value || "https://luxeboutique.com";
+    .from(appSettingsTable)
+    .where(and(eq(appSettingsTable.key, "store_url"), eq(appSettingsTable.storeId, storeId)))
+    .limit(1);
+
+  // 3. Fallback to general environment variables
+  const raw = row?.value || process.env.PUBLIC_APP_URL || process.env.APP_URL || "https://luxeboutique.com";
   const appUrl = raw.split(",")[0].trim().replace(/\/$/, "");
   return /^https?:\/\//i.test(appUrl) ? appUrl : `https://${appUrl}`;
 }
 
 // ── Unified Luxe Boutique System Template Engine ─────────────────────────────
 
-let cachedBranding: any = null;
+let cachedBranding: Record<string, any> = {};
 
-export async function loadBrandingCache(): Promise<any> {
+export async function loadBrandingCache(storeId?: string): Promise<any> {
+  if (!storeId) return null;
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
     const s = Object.fromEntries(rows.map((row) => [row.key, row.value]));
-    cachedBranding = {
+    cachedBranding[storeId] = {
       store_name: s.store_name || "LUXE Boutique",
       brand_primary_color: s.brand_primary_color || "#006c49",
       brand_logo_url: s.brand_logo_url || "",
@@ -189,7 +239,7 @@ export async function loadBrandingCache(): Promise<any> {
       brand_hospitality_notes: s.brand_hospitality_notes || "Enjoy our signature champagne service upon your arrival.",
     };
   } catch (error) {
-    cachedBranding = {
+    cachedBranding[storeId] = {
       store_name: "LUXE Boutique",
       brand_primary_color: "#006c49",
       brand_logo_url: "",
@@ -198,11 +248,11 @@ export async function loadBrandingCache(): Promise<any> {
       brand_hospitality_notes: "Enjoy our signature champagne service upon your arrival.",
     };
   }
-  return cachedBranding;
+  return cachedBranding[storeId];
 }
 
-export function getBranding(): any {
-  if (!cachedBranding) {
+export function getBranding(storeId: string = "store-main"): any {
+  if (!cachedBranding[storeId]) {
     return {
       store_name: "LUXE Boutique",
       brand_primary_color: "#006c49",
@@ -212,7 +262,7 @@ export function getBranding(): any {
       brand_hospitality_notes: "Enjoy our signature champagne service upon your arrival.",
     };
   }
-  return cachedBranding;
+  return cachedBranding[storeId];
 }
 
 export function renderSystemEmail(options: {
@@ -222,8 +272,9 @@ export function renderSystemEmail(options: {
   contentHtml: string;
   actionButton?: { text: string; url: string };
   footerNotice?: string;
+  storeId?: string;
 }): string {
-  const brand = getBranding();
+  const brand = getBranding(options.storeId || "store-main");
   const storeName = brand.store_name;
   const primaryColor = brand.brand_primary_color;
   const logoUrl = brand.brand_logo_url;
@@ -309,8 +360,8 @@ export function renderSystemEmail(options: {
 export function buildOtpEmail(options: { code: string; expiresMinutes?: number }): { subject: string; text: string; html: string } {
   const code = options.code;
   const mins = options.expiresMinutes ?? 10;
-  const subject = "Your Luxe Boutique admin sign-in code";
-  const text = `Your Luxe Boutique admin sign-in code is ${code}. It expires in ${mins} minutes.`;
+  const subject = "Your Luxe Boutique seller sign-in code";
+  const text = `Your Luxe Boutique seller sign-in code is ${code}. It expires in ${mins} minutes.`;
   const html = renderSystemEmail({
     title: "Executive Sign-In Verification",
     badge: "2FA SECURITY CODE",
@@ -481,7 +532,7 @@ export function buildLowStockAlertEmail(options: {
         </tbody>
       </table>
     `,
-    actionButton: { text: "Manage Inventory", url: `${options.adminUrl}/admin/products` },
+    actionButton: { text: "Manage Inventory", url: `${options.adminUrl}/seller/products` },
   });
 
   return { subject, text, html };

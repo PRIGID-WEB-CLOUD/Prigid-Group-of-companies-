@@ -1,11 +1,26 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
-import { db, messagesTable } from "@workspace/db";
-import { addEvent, getChannelCredentials } from "./channels";
+import { db, messagesTable, channelCredentialsTable } from "@workspace/db";
+import { addEvent } from "./channels";
 import { eventBus } from "../lib/eventBus";
 import { logger } from "../lib/logger";
+import { eq, sql } from "drizzle-orm";
 
 const router = Router();
+
+// Helper to resolve storeId from recipientId (Page ID, WABA ID, etc)
+async function resolveStoreIdFromRecipient(recipientId: string): Promise<string | null> {
+  if (!recipientId) return null;
+  const [match] = await db.select({ storeId: channelCredentialsTable.storeId })
+    .from(channelCredentialsTable)
+    .where(sql`${channelCredentialsTable.data}->>'page_id' = ${recipientId} OR 
+               ${channelCredentialsTable.data}->>'waba_id' = ${recipientId} OR 
+               ${channelCredentialsTable.data}->>'phone_number_id' = ${recipientId} OR 
+               ${channelCredentialsTable.data}->>'ig_user_id' = ${recipientId} OR
+               ${channelCredentialsTable.data}->>'catalog_id' = ${recipientId}`)
+    .limit(1);
+  return match?.storeId ?? null;
+}
 
 // Helper to extract Meta verification
 async function handleMetaVerify(req: any, res: any, channelName: string) {
@@ -21,7 +36,7 @@ async function handleMetaVerify(req: any, res: any, channelName: string) {
 
     // Strictly validate the verify token
     if (token === expectedToken) {
-      addEvent(channelName, "Webhook verified", `Successfully verified webhook for channel: ${channelName}`, "sync");
+      // Note: verification event is logged without storeId because we don't know the store yet during GET verification
       res.set("Content-Type", "text/plain");
       return res.status(200).send(String(challenge));
     } else {
@@ -43,6 +58,9 @@ router.get("/webhooks/meta", (req, res, next) => handleMetaVerify(req, res, "met
 async function processWhatsAppWebhook(payload: any) {
   const entries = payload?.entry || [];
   for (const entry of entries) {
+    const recipientId = entry.id;
+    const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+
     const changes = entry?.changes || [];
     for (const change of changes) {
       const value = change?.value;
@@ -63,10 +81,10 @@ async function processWhatsAppWebhook(payload: any) {
         const messageId = message.id || randomUUID();
         const timestampSec = parseInt(message.timestamp, 10) || Math.floor(Date.now() / 1000);
         const threadId = `whatsapp_${senderId}`;
-        const recipientId = entry.id;
 
         const [inserted] = await db.insert(messagesTable).values({
           id: messageId,
+          storeId,
           threadId,
           sender: "customer",
           text,
@@ -81,10 +99,11 @@ async function processWhatsAppWebhook(payload: any) {
           recipientId
         }).returning();
 
-        await addEvent("whatsapp", "Message received", `From ${customerName}: "${text.slice(0, 50)}"`, "sync");
+        await addEvent("whatsapp", "Message received", `From ${customerName}: "${text.slice(0, 50)}"`, "sync", storeId);
 
         eventBus.publish({
           type: "new_message",
+          storeId,
           payload: inserted
         } as any);
       }
@@ -95,6 +114,9 @@ async function processWhatsAppWebhook(payload: any) {
 async function processFacebookWebhook(payload: any) {
   const entries = payload?.entry || [];
   for (const entry of entries) {
+    const recipientId = entry.id;
+    const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+
     // 1. Messenger DMs
     if (entry?.messaging) {
       for (const messagingEvent of entry.messaging) {
@@ -112,10 +134,10 @@ async function processFacebookWebhook(payload: any) {
           const messageId = message.mid || randomUUID();
           const customerName = `Facebook User (${senderId})`;
           const threadId = `facebook_${senderId}`;
-          const recipientId = entry.id;
 
           const [inserted] = await db.insert(messagesTable).values({
             id: messageId,
+            storeId,
             threadId,
             sender: isEcho ? "admin" : "customer",
             text,
@@ -130,10 +152,11 @@ async function processFacebookWebhook(payload: any) {
             recipientId
           }).returning();
 
-          await addEvent("facebook", isEcho ? "Outgoing message echo" : "Messenger message received", `From ${isEcho ? "Admin" : customerName}: "${text.slice(0, 50)}"`, "sync");
+          await addEvent("facebook", isEcho ? "Outgoing message echo" : "Messenger message received", `From ${isEcho ? "Admin" : customerName}: "${text.slice(0, 50)}"`, "sync", storeId);
 
           eventBus.publish({
             type: "new_message",
+            storeId,
             payload: inserted
           } as any);
         }
@@ -151,10 +174,10 @@ async function processFacebookWebhook(payload: any) {
           const text = value.message || "";
           const commentId = value.comment_id || randomUUID();
           const threadId = `facebook_${senderId}`;
-          const recipientId = entry.id;
 
           const [inserted] = await db.insert(messagesTable).values({
             id: commentId,
+            storeId,
             threadId,
             sender: "customer",
             text,
@@ -170,10 +193,11 @@ async function processFacebookWebhook(payload: any) {
             recipientId
           }).returning();
 
-          await addEvent("facebook", "Comment received", `From ${customerName} on post: "${text.slice(0, 50)}"`, "sync");
+          await addEvent("facebook", "Comment received", `From ${customerName} on post: "${text.slice(0, 50)}"`, "sync", storeId);
 
           eventBus.publish({
             type: "new_message",
+            storeId,
             payload: inserted
           } as any);
         }
@@ -185,6 +209,9 @@ async function processFacebookWebhook(payload: any) {
 async function processInstagramWebhook(payload: any) {
   const entries = payload?.entry || [];
   for (const entry of entries) {
+    const recipientId = entry.id;
+    const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+
     // 1. Instagram DMs
     if (entry?.messaging) {
       for (const messagingEvent of entry.messaging) {
@@ -202,10 +229,10 @@ async function processInstagramWebhook(payload: any) {
           const messageId = message.mid || randomUUID();
           const customerName = `Instagram User (${senderId})`;
           const threadId = `instagram_${senderId}`;
-          const recipientId = entry.id;
 
           const [inserted] = await db.insert(messagesTable).values({
             id: messageId,
+            storeId,
             threadId,
             sender: isEcho ? "admin" : "customer",
             text,
@@ -220,10 +247,11 @@ async function processInstagramWebhook(payload: any) {
             recipientId
           }).returning();
 
-          await addEvent("instagram", isEcho ? "Outgoing DM echo" : "DM received", `From ${isEcho ? "Admin" : customerName}: "${text.slice(0, 50)}"`, "sync");
+          await addEvent("instagram", isEcho ? "Outgoing DM echo" : "DM received", `From ${isEcho ? "Admin" : customerName}: "${text.slice(0, 50)}"`, "sync", storeId);
 
           eventBus.publish({
             type: "new_message",
+            storeId,
             payload: inserted
           } as any);
         }
@@ -241,10 +269,10 @@ async function processInstagramWebhook(payload: any) {
           const text = value?.text || "";
           const commentId = value?.id || randomUUID();
           const threadId = `instagram_${senderId}`;
-          const recipientId = entry.id;
 
           const [inserted] = await db.insert(messagesTable).values({
             id: commentId,
+            storeId,
             threadId,
             sender: "customer",
             text,
@@ -260,10 +288,11 @@ async function processInstagramWebhook(payload: any) {
             recipientId
           }).returning();
 
-          await addEvent("instagram", "Comment received", `From ${customerName}: "${text.slice(0, 50)}"`, "sync");
+          await addEvent("instagram", "Comment received", `From ${customerName}: "${text.slice(0, 50)}"`, "sync", storeId);
 
           eventBus.publish({
             type: "new_message",
+            storeId,
             payload: inserted
           } as any);
         }
@@ -323,11 +352,15 @@ router.post("/webhooks/commerce", async (req, res) => {
     const value = change?.value;
 
     if (change) {
+      const recipientId = entry?.id;
+      const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+
       await addEvent(
         "commerce",
         "Catalog sync event",
         `Catalog event received: field="${change.field}", verb="${value?.verb || "update"}"`,
-        "info"
+        "info",
+        storeId
       );
     }
 
@@ -348,11 +381,15 @@ router.post("/webhooks/ads", async (req, res) => {
     const change = entry?.changes?.[0];
 
     if (change) {
+      const recipientId = entry?.id;
+      const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+
       await addEvent(
         "ads",
         "Ad account event",
         `Ad event received: field="${change.field}", id="${change.value?.ad_id || "unknown"}"`,
-        "info"
+        "info",
+        storeId
       );
     }
 

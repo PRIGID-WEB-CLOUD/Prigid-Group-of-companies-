@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { randomUUID } from "crypto";
 import { db, messagesTable } from "@workspace/db";
 import { requireAdmin } from "../middleware/requireAdmin";
@@ -6,6 +6,7 @@ import { addEvent, getChannelCredentials } from "./channels";
 import { eventBus } from "../lib/eventBus";
 import { logger } from "../lib/logger";
 import { eq, desc, asc, sql, or, and } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 router.use("/chat", requireAdmin);
@@ -13,11 +14,11 @@ router.use("/crm", requireAdmin);
 router.use("/inbox", requireAdmin);
 
 // Helper to get active asset IDs
-async function getActiveAssetIds() {
+async function getActiveAssetIds(storeId: string) {
   const [fbCreds, igCreds, waCreds] = await Promise.all([
-    getChannelCredentials("facebook"),
-    getChannelCredentials("instagram"),
-    getChannelCredentials("whatsapp")
+    getChannelCredentials("facebook", storeId),
+    getChannelCredentials("instagram", storeId),
+    getChannelCredentials("whatsapp", storeId)
   ]);
 
   const ids: string[] = [];
@@ -30,9 +31,10 @@ async function getActiveAssetIds() {
 }
 
 // Health check for CRM database connectivity
-router.get("/chat/health", async (_req, res) => {
+router.get("/chat/health", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   try {
-    const rows = await db.execute(sql`SELECT count(*) FROM ${messagesTable}`);
+    const rows = await db.execute(sql`SELECT count(*) as count FROM ${messagesTable} WHERE store_id = ${storeId}`);
     res.json({ ok: true, count: rows.rows[0].count });
   } catch (err: any) {
     logger.error({ err }, "CRM Health Check Failed");
@@ -41,20 +43,22 @@ router.get("/chat/health", async (_req, res) => {
 });
 
 // Fetch messages filtered by active assets
-router.get("/chat/messages", async (req, res) => {
+router.get("/chat/messages", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   try {
-    const activeIds = await getActiveAssetIds();
+    const activeIds = await getActiveAssetIds(storeId);
     
     // If no assets are connected, we still might want to show non-meta channels (if any)
     // but for Meta specifically, we filter.
     // If activeIds is empty, and we want to be strict, we'd return nothing for meta.
     
-    let query = db.select().from(messagesTable);
+    let filters = eq(messagesTable.storeId, storeId);
     
     if (activeIds.length > 0) {
       // Filter where recipientId is in activeIds OR recipientId is null (backward compatibility/internal notes)
       // Actually, for strict asset switching, we only show messages for the active ones.
-      query = query.where(
+      filters = and(
+        filters,
         or(
           sql`${messagesTable.recipientId} IN (${activeIds.join(',')})`,
           sql`${messagesTable.recipientId} IS NULL`,
@@ -63,7 +67,9 @@ router.get("/chat/messages", async (req, res) => {
       ) as any;
     }
 
-    const list = await query.orderBy(asc(messagesTable.timestamp));
+    const list = await db.select().from(messagesTable)
+      .where(filters)
+      .orderBy(asc(messagesTable.timestamp));
     return res.json(list);
   } catch (err) {
     logger.error({ err }, "Error fetching chat messages");
@@ -72,7 +78,8 @@ router.get("/chat/messages", async (req, res) => {
 });
 
 // Admin sends message, comment reply, or adds note
-router.post("/chat/messages", async (req, res) => {
+router.post("/chat/messages", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const {
     threadId,
     text,
@@ -103,13 +110,14 @@ router.post("/chat/messages", async (req, res) => {
     
     // Determine recipientId from current credentials
     let recipientId: string | undefined;
-    const creds = await getChannelCredentials(channel);
+    const creds = await getChannelCredentials(channel, storeId);
     if (channel === "whatsapp") recipientId = creds["waba_id"] || creds["phone_number_id"];
     else if (channel === "facebook") recipientId = creds["page_id"];
     else if (channel === "instagram") recipientId = creds["ig_user_id"];
 
     const [inserted] = await db.insert(messagesTable).values({
       id: messageId,
+      storeId,
       threadId,
       sender,
       text,
@@ -127,7 +135,7 @@ router.post("/chat/messages", async (req, res) => {
     // Trigger Outgoing Live Messaging API if credentials exist
     if (type === "message" && channelType === "chat" && phone) {
       if (channel === "whatsapp") {
-        const waCreds = await getChannelCredentials("whatsapp");
+        const waCreds = await getChannelCredentials("whatsapp", storeId);
         const phoneNumberId = waCreds["phone_number_id"];
         const token = waCreds["system_access_token"];
         if (phoneNumberId && token) {
@@ -146,18 +154,18 @@ router.post("/chat/messages", async (req, res) => {
             if (!r.ok || resData.error) {
               const errorMsg = resData.error?.message || "Unknown Meta API error";
               logger.warn({ error: resData.error }, "WhatsApp API rejection on outgoing message");
-              await addEvent("whatsapp", "Outbound message failed", `Meta API Error: ${errorMsg}`, "error");
+              await addEvent("whatsapp", "Outbound message failed", `Meta API Error: ${errorMsg}`, "error", storeId);
             } else {
-              await db.update(messagesTable).set({ status: "delivered" }).where(eq(messagesTable.id, messageId));
+              await db.update(messagesTable).set({ status: "delivered" }).where(and(eq(messagesTable.id, messageId), eq(messagesTable.storeId, storeId)));
               inserted.status = "delivered";
             }
           } catch (err) {
             logger.error({ err }, "Error calling outgoing WhatsApp API");
-            await addEvent("whatsapp", "Outbound message failed", `Network Error: ${String(err)}`, "error");
+            await addEvent("whatsapp", "Outbound message failed", `Network Error: ${String(err)}`, "error", storeId);
           }
         }
       } else if (channel === "facebook" || channel === "instagram") {
-        const creds = await getChannelCredentials(channel);
+        const creds = await getChannelCredentials(channel, storeId);
         const token = creds["page_access_token"];
         if (token) {
           try {
@@ -175,14 +183,14 @@ router.post("/chat/messages", async (req, res) => {
             if (!r.ok || resData.error) {
               const errorMsg = resData.error?.message || "Unknown Meta API error";
               logger.warn({ error: resData.error, channel }, "Meta Messaging API rejection on outgoing message");
-              await addEvent(channel, "Outbound message failed", `Meta API Error: ${errorMsg}`, "error");
+              await addEvent(channel, "Outbound message failed", `Meta API Error: ${errorMsg}`, "error", storeId);
             } else {
-              await db.update(messagesTable).set({ status: "delivered" }).where(eq(messagesTable.id, messageId));
+              await db.update(messagesTable).set({ status: "delivered" }).where(and(eq(messagesTable.id, messageId), eq(messagesTable.storeId, storeId)));
               inserted.status = "delivered";
             }
           } catch (err) {
             logger.error({ err, channel }, "Error calling outgoing Meta Messaging API");
-            await addEvent(channel, "Outbound message failed", `Network Error: ${String(err)}`, "error");
+            await addEvent(channel, "Outbound message failed", `Network Error: ${String(err)}`, "error", storeId);
           }
         }
       }
@@ -190,7 +198,7 @@ router.post("/chat/messages", async (req, res) => {
 
     // Add Audit Log
     const actionLabel = type === "note" ? "Note added" : "Reply sent";
-    await addEvent(channel, actionLabel, `To ${customerName}: "${text.slice(0, 50)}"`, "info");
+    await addEvent(channel, actionLabel, `To ${customerName}: "${text.slice(0, 50)}"`, "info", storeId);
 
     // Broadcast in real-time to other connected dashboards
     eventBus.publish({
@@ -206,19 +214,20 @@ router.post("/chat/messages", async (req, res) => {
 });
 
 // Clear/read all unread messages for a thread
-router.post("/chat/threads/:threadId/clear-unread", async (req, res) => {
+router.post("/chat/threads/:threadId/clear-unread", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { threadId } = req.params;
 
   try {
     // Update all customer messages in this thread to "read"
     await db.update(messagesTable)
       .set({ status: "read" })
-      .where(eq(messagesTable.threadId, threadId));
+      .where(and(eq(messagesTable.threadId, threadId as string), eq(messagesTable.storeId, storeId)));
 
     // Also broadcast a system read sync event to any active UI clients
     eventBus.publish({
       type: "new_message",
-      payload: { threadId, action: "clear-unread", sender: "system" } as any
+      payload: { threadId, action: "clear-unread", sender: "system", storeId } as any
     } as any);
 
     return res.json({ ok: true });
@@ -229,14 +238,15 @@ router.post("/chat/threads/:threadId/clear-unread", async (req, res) => {
 });
 
 // Clear all CRM chat messages
-router.delete("/chat/messages", async (req, res) => {
+router.delete("/chat/messages", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   try {
-    await db.delete(messagesTable);
+    await db.delete(messagesTable).where(eq(messagesTable.storeId, storeId));
 
     // Broadcast sync event to all active UI clients to refresh threads
     eventBus.publish({
       type: "new_message",
-      payload: { action: "clear-all", sender: "system" } as any
+      payload: { action: "clear-all", sender: "system", storeId } as any
     } as any);
 
     return res.json({ ok: true, message: "All CRM chat messages cleared successfully" });
@@ -247,14 +257,15 @@ router.delete("/chat/messages", async (req, res) => {
 });
 
 // Delete an individual chat thread
-router.delete("/chat/threads/:threadId", async (req, res) => {
+router.delete("/chat/threads/:threadId", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { threadId } = req.params;
   try {
-    await db.delete(messagesTable).where(eq(messagesTable.threadId, threadId));
+    await db.delete(messagesTable).where(and(eq(messagesTable.threadId, threadId as string), eq(messagesTable.storeId, storeId)));
 
     eventBus.publish({
       type: "new_message",
-      payload: { action: "delete-thread", threadId, sender: "system" } as any
+      payload: { action: "delete-thread", threadId, sender: "system", storeId } as any
     } as any);
 
     return res.json({ ok: true, message: `Thread ${threadId} deleted successfully` });
@@ -265,16 +276,17 @@ router.delete("/chat/threads/:threadId", async (req, res) => {
 });
 
 // Delete an individual message
-router.delete("/chat/messages/:messageId", async (req, res) => {
+router.delete("/chat/messages/:messageId", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { messageId } = req.params;
   try {
-    const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, messageId));
-    await db.delete(messagesTable).where(eq(messagesTable.id, messageId));
+    const [msg] = await db.select().from(messagesTable).where(and(eq(messagesTable.id, messageId as string), eq(messagesTable.storeId, storeId)));
+    await db.delete(messagesTable).where(and(eq(messagesTable.id, messageId as string), eq(messagesTable.storeId, storeId)));
 
     if (msg) {
       eventBus.publish({
         type: "new_message",
-        payload: { action: "delete-message", messageId, threadId: msg.threadId, sender: "system" } as any
+        payload: { action: "delete-message", messageId, threadId: msg.threadId, sender: "system", storeId } as any
       } as any);
     }
 

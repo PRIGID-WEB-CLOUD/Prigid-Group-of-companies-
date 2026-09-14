@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Response } from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
@@ -7,6 +7,7 @@ import { db, mediaItemsTable } from "@workspace/db";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { logger } from "../lib/logger";
 import { getCloudinaryConfig, uploadToCloudinary } from "../services/cloudinary";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
@@ -36,7 +37,7 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (
-  _req: Request,
+  _req: any,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ) => {
@@ -64,7 +65,8 @@ const upload = multer({
   },
 });
 
-const handleUpload = async (req: Request, res: Response) => {
+const handleUpload = async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   try {
     const files: Express.Multer.File[] = [];
     if (Array.isArray(req.files)) {
@@ -82,7 +84,7 @@ const handleUpload = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "No image file provided for upload." });
     }
 
-    const cloudinaryCfg = await getCloudinaryConfig().catch(() => ({ isConfigured: false }));
+    const cloudinaryCfg = await getCloudinaryConfig(storeId).catch(() => ({ isConfigured: false }));
     const savedRecords = [];
     const urls: string[] = [];
 
@@ -95,7 +97,7 @@ const handleUpload = async (req: Request, res: Response) => {
 
       if (cloudinaryCfg.isConfigured) {
         try {
-          const cloudRes = await uploadToCloudinary(file.path);
+          const cloudRes = await uploadToCloudinary(file.path, storeId);
           fileUrl = cloudRes.url;
           publicId = cloudRes.publicId;
           format = cloudRes.format || format;
@@ -116,6 +118,7 @@ const handleUpload = async (req: Request, res: Response) => {
 
       const record = {
         id,
+        storeId,
         filename: file.originalname || file.filename,
         url: fileUrl,
         mimeType: file.mimetype,
@@ -171,7 +174,7 @@ const uploadFields = upload.fields([
   { name: "images", maxCount: 10 },
 ]);
 
-router.post("/upload", requireAdmin, uploadFields, handleUpload);
-router.post("/media/upload", requireAdmin, uploadFields, handleUpload);
+router.post("/upload", requireAdmin, uploadFields, handleUpload as any);
+router.post("/media/upload", requireAdmin, uploadFields, handleUpload as any);
 
 export default router;

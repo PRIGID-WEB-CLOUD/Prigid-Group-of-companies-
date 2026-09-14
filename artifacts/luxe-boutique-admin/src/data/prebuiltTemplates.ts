@@ -169,7 +169,7 @@ export const PREBUILT_WHATSAPP_TEMPLATES: PrebuiltTemplateBlueprint[] = [
       "2": "Lady Victoria Cavendish",
       "3": "4,890.00",
       "4": "Italian Silk Gown, Diamond Brooch",
-      "5": `${getLiveOrigin()}/admin/orders`,
+      "5": `${getLiveOrigin()}/seller/orders`,
     },
     tips: "Can be dispatched to staff WhatsApp numbers for instant operational responsiveness.",
   },

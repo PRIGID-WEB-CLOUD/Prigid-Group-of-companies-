@@ -6,22 +6,25 @@ import NewsletterForm from "@/components/NewsletterForm";
 import { useEffect, useState } from "react";
 import { ArrowRight, Play, X } from "lucide-react";
 import { SEO } from "@/components/SEO";
+import { useBranding } from "@/contexts/BrandingContext";
 
 export default function HomePage() {
+  const { branding, activeSlug } = useBranding();
   const [products, setProducts] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
   const [filmOpen, setFilmOpen] = useState(false);
 
   useEffect(() => {
-    fetch("/api/products")
+    const q = activeSlug ? `?store=${encodeURIComponent(activeSlug)}` : "";
+    fetch(`/api/products${q}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setProducts(d); })
       .catch(() => {});
-    fetch("/api/posts")
+    fetch(`/api/posts${q}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setPosts(d.slice(0, 2)); })
       .catch(() => {});
-  }, []);
+  }, [activeSlug]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setFilmOpen(false); };
@@ -32,20 +35,32 @@ export default function HomePage() {
   return (
     <div className="bg-white selection:bg-slate-900 selection:text-white">
       <SEO
-        title="LUXE BOUTIQUE | Luxury Fashion & Haute Couture"
-        description="Explore the latest luxury runway collections, designer apparel, handcrafted leather goods, and fine accessories at LUXE BOUTIQUE."
+        title={`${branding.store_name} | ${branding.brand_tagline || "Luxury Ateliers"}`}
+        description={`${branding.store_name} — ${branding.brand_tagline}. Discover bespoke collections and private atelier appointments.`}
       />
       <section className="relative h-[72vh] w-full flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=2070&auto=format&fit=crop" alt="Hero" className="w-full h-full object-cover object-center" referrerPolicy="no-referrer" />
-          <div className="absolute inset-0 bg-black/25" />
+          <img 
+            src={branding.brand_hero_image || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=2070&auto=format&fit=crop"} 
+            alt={branding.store_name} 
+            className="w-full h-full object-cover object-center" 
+            referrerPolicy="no-referrer" 
+          />
+          <div className="absolute inset-0 bg-black/40" />
         </div>
         <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
           <div className="max-w-2xl">
             <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: "easeOut" }} className="space-y-6">
-              <span className="text-white text-[10px] md:text-xs font-bold tracking-[0.4em] uppercase block">The Summer Atelier 2024</span>
-              <h1 className="text-white text-5xl md:text-7xl font-serif leading-[1.1] tracking-tight">Architectural <br /><span className="italic font-light">Elegance</span></h1>
-              <p className="text-white/80 text-base md:text-lg leading-relaxed max-w-sm font-light">Discover our latest release: A study in precision tailoring and sustainable silk fabrics.</p>
+              <span className="text-white text-[10px] md:text-xs font-bold tracking-[0.4em] uppercase block">
+                {branding.brand_tagline || "Haute Parfumerie & Sartorial Atelier"}
+              </span>
+              <h1 
+                className="text-white text-5xl md:text-7xl font-serif leading-[1.1] tracking-tight"
+                dangerouslySetInnerHTML={{ __html: branding.brand_hero_headline || "Architectural <br /><span class=\"italic font-light\">Elegance</span>" }}
+              />
+              <p className="text-white/90 text-base md:text-lg leading-relaxed max-w-lg font-light">
+                {branding.brand_hero_subheadline || "Discover our latest release: A study in precision tailoring and sustainable silk fabrics."}
+              </p>
               <div className="pt-4 flex flex-wrap gap-4">
                 <Link href="/products" className="bg-white text-slate-900 px-10 py-5 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all duration-500">
                   Explore Collection

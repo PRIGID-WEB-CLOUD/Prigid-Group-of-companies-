@@ -1,9 +1,10 @@
 import { v2 as cloudinary } from "cloudinary";
 import { db, appSettingsTable } from "@workspace/db";
 import { decryptCredential, isEncryptedCredential } from "./credentialVault";
+import { eq, and } from "drizzle-orm";
 
-export async function getCloudinaryConfig() {
-  const rows = await db.select().from(appSettingsTable);
+export async function getCloudinaryConfig(storeId: string) {
+  const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
   const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
 
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME || settings.cloudinary_cloud_name || "";
@@ -22,8 +23,8 @@ export async function getCloudinaryConfig() {
   return { cloudName, apiKey, apiSecret: rawSecret, isConfigured };
 }
 
-export async function testCloudinaryConnection() {
-  const config = await getCloudinaryConfig();
+export async function testCloudinaryConnection(storeId: string) {
+  const config = await getCloudinaryConfig(storeId);
   if (!config.isConfigured) {
     throw new Error("Cloudinary credentials (cloud_name, api_key, api_secret) are not fully configured.");
   }
@@ -39,8 +40,8 @@ export async function testCloudinaryConnection() {
   return { ok: true, cloudName: config.cloudName, ping: res };
 }
 
-export async function uploadToCloudinary(filePath: string, folder = "luxe_boutique_uploads") {
-  const config = await getCloudinaryConfig();
+export async function uploadToCloudinary(filePath: string, storeId: string, folder = "luxe_boutique_uploads") {
+  const config = await getCloudinaryConfig(storeId);
   if (!config.isConfigured) {
     throw new Error("Cloudinary credentials not configured.");
   }

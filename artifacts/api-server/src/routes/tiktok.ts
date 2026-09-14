@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { requireAdmin } from "../middleware/requireAdmin";
-import { db, appSettingsTable } from "@workspace/db";
+import { db, appSettingsTable, channelCredentialsTable } from "@workspace/db";
 import { addEvent } from "./channels";
+import { and, eq, sql } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
@@ -9,11 +11,23 @@ const router = Router();
 router.post("/channels/tiktok/webhook", async (req, res) => {
   try {
     const payload = req.body;
+    const shopId = payload?.shop_id;
+    let storeId = "store-main";
+
+    if (shopId) {
+      const [match] = await db.select({ storeId: channelCredentialsTable.storeId })
+        .from(channelCredentialsTable)
+        .where(sql`${channelCredentialsTable.data}->>'tiktok_shop_id' = ${shopId}`)
+        .limit(1);
+      if (match) storeId = match.storeId;
+    }
+
     await addEvent(
       "tiktok",
       "Webhook received",
       `Received TikTok Shop webhook event: ${payload?.type || "order_notification"}`,
-      "sync"
+      "sync",
+      storeId
     );
     return res.json({ code: 0, message: "success" });
   } catch (err: any) {
@@ -24,9 +38,10 @@ router.post("/channels/tiktok/webhook", async (req, res) => {
 // Admin-only endpoints
 router.use("/channels/tiktok", requireAdmin);
 
-router.get("/channels/tiktok/config", async (_req, res) => {
+router.get("/channels/tiktok/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
     const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     
     return res.json({
@@ -44,7 +59,8 @@ router.get("/channels/tiktok/config", async (_req, res) => {
   }
 });
 
-router.post("/channels/tiktok/config", async (req, res) => {
+router.post("/channels/tiktok/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
     const {
       appKey,
@@ -73,9 +89,9 @@ router.post("/channels/tiktok/config", async (req, res) => {
       if (value !== undefined) {
         await db
           .insert(appSettingsTable)
-          .values({ key, value, updatedAt: new Date() })
+          .values({ key, value, storeId, updatedAt: new Date() })
           .onConflictDoUpdate({
-            target: appSettingsTable.key,
+            target: [appSettingsTable.storeId, appSettingsTable.key],
             set: { value, updatedAt: new Date() },
           });
       }
@@ -85,7 +101,8 @@ router.post("/channels/tiktok/config", async (req, res) => {
       "tiktok",
       "Configuration updated",
       "TikTok Shop connector configuration updated",
-      "info"
+      "info",
+      storeId
     );
 
     return res.json({ success: true, message: "TikTok configuration saved successfully" });
@@ -94,14 +111,16 @@ router.post("/channels/tiktok/config", async (req, res) => {
   }
 });
 
-router.post("/channels/tiktok/sync-catalog", async (_req, res) => {
+router.post("/channels/tiktok/sync-catalog", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
     // Record synchronization event
     await addEvent(
       "tiktok",
       "Catalog Sync",
       "Manual TikTok Shop Catalog Sync completed. Synced active boutique items.",
-      "sync"
+      "sync",
+      storeId
     );
 
     return res.json({

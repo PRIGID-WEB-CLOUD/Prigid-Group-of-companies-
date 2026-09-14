@@ -3,12 +3,36 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+// ── Stores (Multi-tenant Root) ────────────────────────────────────────────────
+
+export const storesTable = pgTable("stores", {
+  id:                    text("id").primaryKey(),
+  slug:                  text("slug").notNull().unique(),
+  name:                  text("name").notNull().default("Luxe Boutique Ateliers"),
+  ownerId:               text("owner_id"), // Will be updated after usersTable is defined
+  customDomain:          text("custom_domain").unique(),
+  planTier:              text("plan_tier").notNull().default("starter"), // starter | growth | enterprise
+  status:                text("status").notNull().default("active"), // active | suspended | past_due
+  isPublished:           boolean("is_published").notNull().default(false),
+  publishStatus:         text("publish_status").notNull().default("DRAFT"), // DRAFT | PUBLISHED | UNPUBLISHED | SUSPENDED
+  publishableKey:        text("publishable_key").notNull().unique(),
+  secretKeyHash:         text("secret_key_hash").notNull(),
+  currency:              text("currency").notNull().default("USD"),
+  activePaymentProvider: text("active_payment_provider").notNull().default("stripe"),
+  createdAt:             timestamp("created_at").notNull().defaultNow(),
+  updatedAt:             timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const stores = storesTable;
+export type Store = typeof storesTable.$inferSelect;
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 export const usersTable = pgTable("users", {
   id:                  text("id").primaryKey(),
+  storeId:             text("store_id").references(() => storesTable.id, { onDelete: "cascade" }),
   name:                text("name").notNull(),
-  email:               text("email").notNull().unique(),
+  email:               text("email").notNull(),
   role:                text("role").notNull().default("CUSTOMER"),
   passwordHash:        text("password_hash").notNull().default(""),
   passwordResetToken:  text("password_reset_token"),
@@ -16,6 +40,7 @@ export const usersTable = pgTable("users", {
   createdAt:           timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   check("users_role_check", sql`${table.role} in ('CUSTOMER', 'ADMIN', 'SUPER_ADMIN')`),
+  uniqueIndex("users_store_email_idx").on(table.storeId, table.email),
 ]);
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({ createdAt: true });
@@ -28,6 +53,7 @@ export const users = usersTable;
 
 export const adminOtpCodesTable = pgTable("admin_otp_codes", {
   id:        text("id").primaryKey(),
+  storeId:   text("store_id").references(() => storesTable.id, { onDelete: "cascade" }),
   email:     text("email").notNull(),
   code:      text("code").notNull(), // HMAC digest; never stores the plaintext OTP
   expiresAt: timestamp("expires_at").notNull(),
@@ -49,10 +75,12 @@ export const authRateLimitsTable = pgTable("auth_rate_limits", {
 
 export const sessionsTable = pgTable("sessions", {
   token:     text("token").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   userId:    text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
+  index("sessions_store_id_idx").on(table.storeId),
   index("sessions_user_id_idx").on(table.userId),
   index("sessions_expires_at_idx").on(table.expiresAt),
 ]);
@@ -63,11 +91,14 @@ export type Session = typeof sessionsTable.$inferSelect;
 
 export const categoriesTable = pgTable("categories", {
   id:          text("id").primaryKey(),
+  storeId:     text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   name:        text("name").notNull(),
-  slug:        text("slug").notNull().unique(),
+  slug:        text("slug").notNull(),
   description: text("description").notNull().default(""),
   createdAt:   timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("categories_store_slug_idx").on(table.storeId, table.slug),
+]);
 
 export type Category = typeof categoriesTable.$inferSelect;
 
@@ -75,6 +106,7 @@ export type Category = typeof categoriesTable.$inferSelect;
 
 export const productsTable = pgTable("products", {
   id:            text("id").primaryKey(),
+  storeId:       text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   name:          text("name").notNull(),
   price:         integer("price").notNull().default(0),
   categoryId:    text("category_id").references(() => categoriesTable.id, { onDelete: "set null" }),
@@ -89,6 +121,7 @@ export const productsTable = pgTable("products", {
   createdAt:     timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   check("products_status_check", sql`${table.status} in ('ACTIVE', 'DRAFT', 'ARCHIVED')`),
+  index("products_store_id_idx").on(table.storeId),
 ]);
 
 export type Product = typeof productsTable.$inferSelect;
@@ -108,6 +141,7 @@ export type OrderItem = {
 
 export const ordersTable = pgTable("orders", {
   id:            text("id").primaryKey(),
+  storeId:       text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   customerId:    text("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
   customerEmail: text("customer_email").notNull(),
   customerName:  text("customer_name").notNull(),
@@ -127,6 +161,7 @@ export const ordersTable = pgTable("orders", {
   uniqueIndex("orders_payment_reference_idx").on(table.paymentReference),
   index("orders_customer_email_idx").on(table.customerEmail),
   index("orders_status_created_at_idx").on(table.status, table.createdAt),
+  index("orders_store_id_idx").on(table.storeId),
 ]);
 
 export type Order = typeof ordersTable.$inferSelect;
@@ -135,10 +170,13 @@ export type Order = typeof ordersTable.$inferSelect;
 
 export const userPushTokensTable = pgTable("user_push_tokens", {
   userId:    text("user_id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   token:     text("token").notNull(),
   platform:  text("platform").notNull().default("unknown"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("user_push_tokens_store_id_idx").on(table.storeId),
+]);
 
 export const insertUserPushTokenSchema = createInsertSchema(userPushTokensTable).omit({ updatedAt: true });
 export type InsertUserPushToken = z.infer<typeof insertUserPushTokenSchema>;
@@ -147,10 +185,14 @@ export type UserPushToken = typeof userPushTokensTable.$inferSelect;
 // ── Channel Credentials ───────────────────────────────────────────────────────
 
 export const channelCredentialsTable = pgTable("channel_credentials", {
-  channel:   text("channel").primaryKey(),
+  id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  channel:   text("channel").notNull(),
   data:      jsonb("data").notNull().$type<Record<string, string>>().default({}),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("channel_credentials_store_channel_idx").on(table.storeId, table.channel),
+]);
 
 export type ChannelCredential = typeof channelCredentialsTable.$inferSelect;
 
@@ -158,6 +200,7 @@ export type ChannelCredential = typeof channelCredentialsTable.$inferSelect;
 
 export const productVariantsTable = pgTable("product_variants", {
   id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   productId: text("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
   size:      text("size").notNull().default(""),
   color:     text("color").notNull().default(""),
@@ -168,12 +211,14 @@ export const productVariantsTable = pgTable("product_variants", {
   eproloVariantId: text("eprolo_variant_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
+  index("product_variants_store_id_idx").on(table.storeId),
   index("product_variants_product_id_idx").on(table.productId),
   index("product_variants_sku_idx").on(table.sku),
 ]);
 
 export const reviewsTable = pgTable("reviews", {
   id:         text("id").primaryKey(),
+  storeId:    text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   productId:  text("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
   userId:     text("user_id").references(() => usersTable.id, { onDelete: "set null" }),
   rating:     integer("rating").notNull(),
@@ -181,33 +226,41 @@ export const reviewsTable = pgTable("reviews", {
   authorName: text("author_name").notNull(),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
+  index("reviews_store_id_idx").on(table.storeId),
   index("reviews_product_created_at_idx").on(table.productId, table.createdAt),
 ]);
 
 export const mediaItemsTable = pgTable("media_items", {
   id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   filename:  text("filename").notNull(),
   url:       text("url").notNull(),
   mimeType:  text("mime_type").notNull(),
   size:      integer("size").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("media_items_store_id_idx").on(table.storeId),
+]);
 
 export const blogPostsTable = pgTable("blog_posts", {
   id:         text("id").primaryKey(),
+  storeId:    text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   title:      text("title").notNull(),
-  slug:       text("slug").notNull().unique(),
+  slug:       text("slug").notNull(),
   content:    text("content").notNull().default(""),
   status:     text("status").notNull().default("DRAFT"),
   authorName: text("author_name").notNull().default("Admin"),
   publishedAt: timestamp("published_at"),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
   updatedAt:  timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("blog_posts_store_slug_idx").on(table.storeId, table.slug),
+]);
 
 export const couponsTable = pgTable("coupons", {
   id:             text("id").primaryKey(),
-  code:           text("code").notNull().unique(),
+  storeId:        text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  code:           text("code").notNull(),
   description:    text("description").notNull().default(""),
   discountType:   text("discount_type").notNull().default("PERCENTAGE"),
   discountValue:  numeric("discount_value", { precision: 12, scale: 2, mode: "number" }).notNull(),
@@ -219,11 +272,13 @@ export const couponsTable = pgTable("coupons", {
   createdAt:      timestamp("created_at").notNull().defaultNow(),
   updatedAt:      timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
+  uniqueIndex("coupons_store_code_idx").on(table.storeId, table.code),
   index("coupons_active_expires_at_idx").on(table.active, table.expiresAt),
 ]);
 
 export const teamMembersTable = pgTable("team_members", {
   id:             text("id").primaryKey(),
+  storeId:        text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   name:           text("name").notNull().default(""),
   email:          text("email").notNull(),
   role:           text("role").notNull().default("EDITOR"),
@@ -231,23 +286,28 @@ export const teamMembersTable = pgTable("team_members", {
   invitedAt:      timestamp("invited_at").notNull().defaultNow(),
   inviteToken:    text("invite_token"),
   inviteExpiresAt: timestamp("invite_expires_at"),
-});
+}, (table) => [
+  uniqueIndex("team_members_store_email_idx").on(table.storeId, table.email),
+]);
 
 // ── Persistent channel hub state ──────────────────────────────────────────────
 
 export const channelConfigsTable = pgTable("channel_configs", {
   id:        text("id").primaryKey(),
-  channelId: text("channel_id").notNull().unique(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  channelId: text("channel_id").notNull(),
   status:    text("status").notNull().default("DISCONNECTED"),
   lastSync:  timestamp("last_sync"),
   latency:   integer("latency").notNull().default(0),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
   check("channel_configs_status_check", sql`${table.status} in ('CONNECTED', 'PAUSED', 'DISCONNECTED')`),
+  uniqueIndex("channel_configs_store_channel_idx").on(table.storeId, table.channelId),
 ]);
 
 export const channelEventLogsTable = pgTable("channel_event_logs", {
   id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   channel:   text("channel").notNull(),
   event:     text("event").notNull(),
   detail:    text("detail").notNull(),
@@ -259,54 +319,70 @@ export const channelEventLogsTable = pgTable("channel_event_logs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   check("channel_event_logs_type_check", sql`${table.type} in ('sync', 'error', 'warning', 'info')`),
-  index("channel_event_logs_channel_created_at_idx").on(table.channel, table.createdAt),
+  index("channel_event_logs_store_channel_idx").on(table.storeId, table.channel, table.createdAt),
 ]);
 
 export const channelWebhooksTable = pgTable("channel_webhooks", {
   id:        text("id").primaryKey(),
-  webhookId: text("webhook_id").notNull().unique(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  webhookId: text("webhook_id").notNull(),
   label:     text("label").notNull(),
   url:       text("url").notNull(),
   active:    boolean("active").notNull().default(true),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("channel_webhooks_store_webhook_idx").on(table.storeId, table.webhookId),
+]);
 
 // ── Persistent Facebook/Meta state ────────────────────────────────────────────
 
 export const facebookConnectionsTable = pgTable("facebook_connections", {
   id:             text("id").primaryKey(),
-  connectionKey:  text("connection_key").notNull().unique(),
+  storeId:        text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  connectionKey:  text("connection_key").notNull(),
   active:         boolean("active").notNull().default(false),
   updatedAt:      timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("facebook_connections_store_key_idx").on(table.storeId, table.connectionKey),
+]);
 
 export const facebookCatalogSettingsTable = pgTable("facebook_catalog_settings", {
   id:                 text("id").primaryKey(),
+  storeId:            text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   includedCategories: jsonb("included_categories").notNull().$type<string[]>().default([]),
   minPrice:           numeric("min_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   maxPrice:           numeric("max_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(10000),
   updatedAt:          timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("facebook_catalog_store_idx").on(table.storeId),
+]);
 
 export const facebookPixelEventsTable = pgTable("facebook_pixel_events", {
   id:         text("id").primaryKey(),
-  storeEvent: text("store_event").notNull().unique(),
+  storeId:    text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  storeEvent: text("store_event").notNull(),
   fbEvent:    text("fb_event").notNull(),
   enabled:    boolean("enabled").notNull().default(true),
   updatedAt:  timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("facebook_pixel_store_event_idx").on(table.storeId, table.storeEvent),
+]);
 
 export const facebookAudiencesTable = pgTable("facebook_audiences", {
   id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   name:      text("name").notNull(),
   size:      text("size").notNull().default("Building…"),
   type:      text("type").notNull().default("Custom"),
   status:    text("status").notNull().default("Building"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("facebook_audiences_store_id_idx").on(table.storeId),
+]);
 
 export const facebookPagePostsTable = pgTable("facebook_page_posts", {
   id:           text("id").primaryKey(),
+  storeId:      text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   caption:      text("caption").notNull(),
   imageUrl:     text("image_url"),
   link:         text("link"),
@@ -318,29 +394,38 @@ export const facebookPagePostsTable = pgTable("facebook_page_posts", {
   shares:       integer("shares").notNull().default(0),
   reach:        integer("reach").notNull().default(0),
   createdAt:    timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("facebook_page_posts_store_id_idx").on(table.storeId),
+]);
 
 export const facebookPostTemplatesTable = pgTable("facebook_post_templates", {
   id:         text("id").primaryKey(),
-  name:       text("name").notNull().unique(),
+  storeId:    text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  name:       text("name").notNull(),
   body:       text("body").notNull(),
   postType:   text("post_type").notNull().default("Standard"),
   usageCount: integer("usage_count").notNull().default(0),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("facebook_post_templates_store_name_idx").on(table.storeId, table.name),
+]);
 
 // ── Persistent newsletter state ──────────────────────────────────────────────
 
 export const newsletterSubscribersTable = pgTable("newsletter_subscribers", {
   id:           text("id").primaryKey(),
-  email:        text("email").notNull().unique(),
+  storeId:      text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  email:        text("email").notNull(),
   name:         text("name"),
   subscribedAt: timestamp("subscribed_at").notNull().defaultNow(),
   active:       boolean("active").notNull().default(true),
-});
+}, (table) => [
+  uniqueIndex("newsletter_subscribers_store_email_idx").on(table.storeId, table.email),
+]);
 
 export const newsletterCampaignsTable = pgTable("newsletter_campaigns", {
   id:              text("id").primaryKey(),
+  storeId:         text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   subject:         text("subject").notNull(),
   body:            text("body").notNull(),
   recipientCount:  integer("recipient_count").notNull().default(0),
@@ -350,64 +435,85 @@ export const newsletterCampaignsTable = pgTable("newsletter_campaigns", {
   scheduledFor:    timestamp("scheduled_for"),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
   updatedAt:       timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("newsletter_campaigns_store_id_idx").on(table.storeId),
+]);
 
 // ── Persistent social content state ──────────────────────────────────────────
 
 export const twitterHashtagsTable = pgTable("twitter_hashtags", {
   id:        text("id").primaryKey(),
-  tag:       text("tag").notNull().unique(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  tag:       text("tag").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("twitter_hashtags_store_tag_idx").on(table.storeId, table.tag),
+]);
 
 export const twitterAutoRulesTable = pgTable("twitter_auto_rules", {
   id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   trigger:   text("trigger").notNull(),
   action:    text("action").notNull(),
   template:  text("template").notNull().default("new_arrival"),
   active:    boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("twitter_auto_rules_store_id_idx").on(table.storeId),
+]);
 
 export const twitterTweetQueueTable = pgTable("twitter_tweet_queue", {
   id:            text("id").primaryKey(),
+  storeId:       text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   text:          text("text").notNull(),
   scheduledFor:  text("scheduled_for").notNull(),
   status:        text("status").notNull().default("Queued"),
   imageStyle:    text("image_style").notNull().default("None"),
   createdAt:     timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("twitter_tweet_queue_store_id_idx").on(table.storeId),
+]);
 
 export const twitterContentTemplatesTable = pgTable("twitter_content_templates", {
   id:         text("id").primaryKey(),
-  name:       text("name").notNull().unique(),
+  storeId:    text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  name:       text("name").notNull(),
   body:       text("body").notNull(),
   usageCount: integer("usage_count").notNull().default(0),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("twitter_templates_store_name_idx").on(table.storeId, table.name),
+]);
 
 export const twitterSchedulerSettingsTable = pgTable("twitter_scheduler_settings", {
   id:           text("id").primaryKey(),
+  storeId:      text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   schedulerOn:  boolean("scheduler_on").notNull().default(false),
   dropFrequency: text("drop_frequency").notNull().default("Daily Digest (6 PM)"),
   imageStyle:   text("image_style").notNull().default("Product Photo"),
   updatedAt:    timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("twitter_scheduler_store_idx").on(table.storeId),
+]);
 
 export const whatsappTemplatesTable = pgTable("whatsapp_templates", {
   id:         text("id").primaryKey(),
-  name:       text("name").notNull().unique(),
+  storeId:    text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  name:       text("name").notNull(),
   category:   text("category").notNull().default("Marketing"),
   body:       text("body").notNull(),
   status:     text("status").notNull().default("Pending"),
   language:   text("language").notNull().default("en"),
   sentCount:  integer("sent_count").notNull().default(0),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("whatsapp_templates_store_name_idx").on(table.storeId, table.name),
+]);
 
 export const whatsappJourneysTable = pgTable("whatsapp_journeys", {
   id:          text("id").primaryKey(),
-  journeyId:   text("journey_id").notNull().unique(),
+  storeId:     text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  journeyId:   text("journey_id").notNull(),
   icon:        text("icon").notNull().default("route"),
   title:       text("title").notNull(),
   description: text("description").notNull(),
@@ -416,26 +522,36 @@ export const whatsappJourneysTable = pgTable("whatsapp_journeys", {
   steps:       integer("steps").notNull().default(1),
   convRate:    text("conv_rate").notNull().default("—"),
   updatedAt:   timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("whatsapp_journeys_store_journey_idx").on(table.storeId, table.journeyId),
+]);
 
 export const whatsappOptinSettingsTable = pgTable("whatsapp_optin_settings", {
   id:            text("id").primaryKey(),
+  storeId:       text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   optinKeyword:  text("optin_keyword").notNull().default("JOIN"),
   optoutKeyword: text("optout_keyword").notNull().default("STOP"),
   doubleOptin:   boolean("double_optin").notNull().default(true),
   updatedAt:     timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("whatsapp_optin_store_idx").on(table.storeId),
+]);
 
 // ── Persistent settings, providers, and API keys ──────────────────────────────
 
 export const appSettingsTable = pgTable("app_settings", {
-  key:       text("key").primaryKey(),
+  id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  key:       text("key").notNull(),
   value:     text("value").notNull().default(""),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("app_settings_store_key_idx").on(table.storeId, table.key),
+]);
 
 export const apiKeysTable = pgTable("api_keys", {
   id:         text("id").primaryKey(),
+  storeId:    text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   name:       text("name").notNull(),
   keyPrefix:  text("key_prefix").notNull(),
   keyHash:    text("key_hash").notNull(),
@@ -443,11 +559,14 @@ export const apiKeysTable = pgTable("api_keys", {
   lastUsed:   timestamp("last_used"),
   revokedAt:  timestamp("revoked_at"),
   usageCount: integer("usage_count").notNull().default(0),
-});
+}, (table) => [
+  index("api_keys_store_id_idx").on(table.storeId),
+]);
 
 export const providerPluginsTable = pgTable("provider_plugins", {
   id:          text("id").primaryKey(),
-  name:        text("name").notNull().unique(),
+  storeId:     text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  name:        text("name").notNull(),
   label:       text("label").notNull(),
   description:  text("description").notNull().default(""),
   mode:         text("mode").notNull().default("live"),
@@ -460,44 +579,36 @@ export const providerPluginsTable = pgTable("provider_plugins", {
   lastError:    text("last_error"),
   updatedAt:    timestamp("updated_at").notNull().defaultNow(),
   logoUrl:      text("logo_url"),
-  storeId:      text("store_id"),
-});
+}, (table) => [
+  uniqueIndex("provider_plugins_store_name_idx").on(table.storeId, table.name),
+]);
 
 export const storeCartItemsTable = pgTable("store_cart_items", {
   id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   sessionId: text("session_id").notNull(),
   productId: text("product_id").notNull(),
   quantity:  integer("quantity").notNull().default(1),
   product:   jsonb("product").notNull().$type<Record<string, unknown>>(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
-  uniqueIndex("store_cart_items_session_product_idx").on(table.sessionId, table.productId),
+  uniqueIndex("store_cart_items_store_session_product_idx").on(table.storeId, table.sessionId, table.productId),
 ]);
 
 export const storeWishlistItemsTable = pgTable("store_wishlist_items", {
   id:        text("id").primaryKey(),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   sessionId: text("session_id").notNull(),
   productId: text("product_id").notNull(),
   product:   jsonb("product").notNull().$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const storesTable = pgTable("stores", {
-  id:                    text("id").primaryKey(),
-  name:                  text("name").notNull().default("Luxe Boutique Ateliers"),
-  ownerId:               text("owner_id").references(() => usersTable.id, { onDelete: "set null" }),
-  currency:              text("currency").notNull().default("USD"),
-  activePaymentProvider: text("active_payment_provider").notNull().default("stripe"),
-  createdAt:             timestamp("created_at").notNull().defaultNow(),
-  updatedAt:             timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const stores = storesTable;
-export type Store = typeof storesTable.$inferSelect;
+}, (table) => [
+  index("store_wishlist_store_session_idx").on(table.storeId, table.sessionId),
+]);
 
 export const paymentProviderConnectionsTable = pgTable("payment_provider_connections", {
   id:                     text("id").primaryKey(),
-  storeId:                text("store_id").notNull().default("store-main"),
+  storeId:                text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   provider:               text("provider").notNull(), // "stripe" | "paystack" | "flutterwave"
   status:                 text("status").notNull().default("NOT_CONNECTED"), // NOT_CONNECTED | CONNECTING | CONNECTED | FAILED | EXPIRED | REAUTHORIZATION_REQUIRED | DISCONNECTED
   accountId:              text("account_id"),
@@ -528,7 +639,7 @@ export type PaymentProviderConnection = typeof paymentProviderConnectionsTable.$
 
 export const paymentOAuthStatesTable = pgTable("payment_oauth_states", {
   id:           text("id").primaryKey(),
-  storeId:      text("store_id").notNull().default("store-main"),
+  storeId:      text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   provider:     text("provider").notNull(),
   state:        text("state").notNull().unique(),
   codeVerifier: text("code_verifier"),
@@ -546,7 +657,7 @@ export type PaymentOAuthState = typeof paymentOAuthStatesTable.$inferSelect;
 
 export const paymentTransactionsTable = pgTable("payment_transactions", {
   id:                    text("id").primaryKey(),
-  storeId:               text("store_id").notNull().default("store-main"),
+  storeId:               text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   orderId:               text("order_id").references(() => ordersTable.id, { onDelete: "set null" }),
   sessionId:             text("session_id").notNull(),
   reference:             text("reference").notNull().unique(),
@@ -572,7 +683,7 @@ export const paymentTransactionsTable = pgTable("payment_transactions", {
 
 export const paymentRefundsTable = pgTable("payment_refunds", {
   id:               text("id").primaryKey(),
-  storeId:          text("store_id").notNull().default("store-main"),
+  storeId:          text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   transactionId:    text("transaction_id").notNull(),
   orderId:          text("order_id").references(() => ordersTable.id, { onDelete: "set null" }),
   providerRefundId: text("provider_refund_id"),
@@ -592,7 +703,7 @@ export type PaymentRefund = typeof paymentRefundsTable.$inferSelect;
 
 export const paymentWebhookEventsTable = pgTable("payment_webhook_events", {
   id:        text("id").primaryKey(),
-  storeId:   text("store_id"),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   provider:  text("provider").notNull(),
   eventId:   text("event_id").notNull(),
   eventType: text("event_type").notNull(),
@@ -610,7 +721,7 @@ export type PaymentWebhookEvent = typeof paymentWebhookEventsTable.$inferSelect;
 
 export const paymentAuditLogsTable = pgTable("payment_audit_logs", {
   id:        text("id").primaryKey(),
-  storeId:   text("store_id").notNull().default("store-main"),
+  storeId:   text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   userId:    text("user_id"),
   action:    text("action").notNull(), // CONNECT_INITIATED | CONNECTED | DISCONNECTED | RECONNECTED | SET_ACTIVE | TOKEN_REFRESHED | PAYMENT_INITIATED | PAYMENT_VERIFIED | REFUND_CREATED | WEBHOOK_PROCESSED
   provider:  text("provider").notNull(),
@@ -628,6 +739,7 @@ export type PaymentAuditLog = typeof paymentAuditLogsTable.$inferSelect;
 
 export const orderItemsTable = pgTable("order_items", {
   id:              text("id").primaryKey(),
+  storeId:         text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   orderId:         text("order_id").notNull().references(() => ordersTable.id, { onDelete: "cascade" }),
   productId:       text("product_id").notNull().references(() => productsTable.id, { onDelete: "restrict" }),
   variantId:       text("variant_id"),
@@ -639,7 +751,7 @@ export const orderItemsTable = pgTable("order_items", {
   eproloVariantId: text("eprolo_variant_id"),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
-  index("order_items_order_id_idx").on(table.orderId),
+  index("order_items_store_order_idx").on(table.storeId, table.orderId),
   index("order_items_product_id_idx").on(table.productId),
 ]);
 
@@ -647,6 +759,7 @@ export const orderItemsTable = pgTable("order_items", {
 
 export const messagesTable = pgTable("messages", {
   id:           text("id").primaryKey(),
+  storeId:      text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   threadId:     text("thread_id").notNull(),
   sender:       text("sender").notNull(), // "customer" | "admin" | "system"
   text:         text("text").notNull(),
@@ -662,7 +775,7 @@ export const messagesTable = pgTable("messages", {
   postImage:    text("post_image"),
   postCaption:  text("post_caption"),
 }, (table) => [
-  index("messages_thread_id_idx").on(table.threadId),
+  index("messages_store_thread_idx").on(table.storeId, table.threadId),
   index("messages_channel_idx").on(table.channel),
   index("messages_timestamp_idx").on(table.timestamp),
 ]);
@@ -675,6 +788,7 @@ export const messages = messagesTable;
 
 export const showroomLocationsTable = pgTable("showroom_locations", {
   id:          text("id").primaryKey(),
+  storeId:     text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
   name:        text("name").notNull(),
   address:     text("address").notNull(),
   city:        text("city").notNull(),
@@ -686,7 +800,9 @@ export const showroomLocationsTable = pgTable("showroom_locations", {
   active:      boolean("active").notNull().default(true),
   createdAt:   timestamp("created_at").notNull().defaultNow(),
   updatedAt:   timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("showroom_locations_store_id_idx").on(table.storeId),
+]);
 
 export const insertShowroomLocationSchema = createInsertSchema(showroomLocationsTable).omit({ createdAt: true, updatedAt: true });
 export type InsertShowroomLocation = z.infer<typeof insertShowroomLocationSchema>;

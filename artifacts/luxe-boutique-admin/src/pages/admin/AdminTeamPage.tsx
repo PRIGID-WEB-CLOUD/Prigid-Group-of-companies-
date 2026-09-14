@@ -40,12 +40,12 @@ type TeamMember = {
   createdAt: string;
 };
 
-const ROLES = ["Owner", "Admin", "Editor", "Viewer"] as const;
+const ROLES = ["Owner", "Seller", "Editor", "Viewer"] as const;
 type Role = typeof ROLES[number];
 
 const ROLE_META: Record<Role, { color: string; bg: string; icon: any; desc: string }> = {
   Owner:  { color: "text-[#b45309]", bg: "bg-amber-50 border-amber-200",   icon: <MdShield />,  desc: "Full access — billing, team, and all settings." },
-  Admin:  { color: "text-[#006c49]", bg: "bg-[#e6f7f1] border-[#c3eed8]", icon: <MdAdminPanelSettings />, desc: "Manage products, orders, customers, and channels." },
+  Seller: { color: "text-[#006c49]", bg: "bg-[#e6f7f1] border-[#c3eed8]", icon: <MdAdminPanelSettings />, desc: "Manage products, orders, customers, and channels." },
   Editor: { color: "text-[#1d4ed8]", bg: "bg-blue-50 border-blue-200",    icon: <MdEditNote />,      desc: "Create and edit catalog, blog, and newsletters." },
   Viewer: { color: "text-[#7c839b]", bg: "bg-[#f0f2ff] border-[#c6c6cd]", icon: <MdVisibility />,     desc: "Read-only access to all admin sections." },
 };
@@ -114,7 +114,11 @@ export default function AdminTeamPage() {
     queryFn: async () => {
       const r = await fetch("/api/team");
       if (!r.ok) throw new Error("Failed");
-      return r.json();
+      const list = await r.json() as TeamMember[];
+      return list.map(m => ({
+        ...m,
+        role: m.role === "Admin" ? "Seller" : m.role
+      }));
     },
   });
 
@@ -123,7 +127,7 @@ export default function AdminTeamPage() {
       const r = await fetch("/api/team/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: inviteEmail, name: inviteName || undefined, role: inviteRole }),
+        body: JSON.stringify({ email: inviteEmail, name: inviteName || undefined, role: inviteRole === "Seller" ? "Admin" : inviteRole }),
       });
       if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Failed"); }
       return r.json() as Promise<TeamMember & { inviteLink: string; emailSent: boolean; emailError?: string }>;
@@ -141,7 +145,7 @@ export default function AdminTeamPage() {
       const r = await fetch(`/api/team/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role: role === "Seller" ? "Admin" : role }),
       });
       if (!r.ok) throw new Error("Failed");
       return r.json();
@@ -421,7 +425,7 @@ export default function AdminTeamPage() {
             <div className="px-8 py-6 border-b border-[#e5eeff] flex items-center justify-between">
               <div>
                 <h2 className="font-serif text-[22px] font-semibold">Invite Team Member</h2>
-                <p className="text-xs font-[Manrope] text-[#7c839b] mt-0.5">They'll receive a link to join the admin portal.</p>
+                <p className="text-xs font-[Manrope] text-[#7c839b] mt-0.5">They'll receive a link to join the seller portal.</p>
               </div>
               <button onClick={() => { setShowInvite(false); setNewLink(null); setInviteError(null); }}
                 className="w-9 h-9 rounded-full hover:bg-[#f0f2ff] flex items-center justify-center text-[#7c839b] hover:text-black transition-colors">

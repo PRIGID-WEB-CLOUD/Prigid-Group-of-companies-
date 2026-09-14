@@ -47,13 +47,21 @@ export class PaystackPaymentProvider implements IPaymentProvider {
   }
 
   isPlatformConfigured(): boolean {
-    return Boolean(this.getClientId() || this.getPlatformSecretKey());
+    return Boolean(this.getClientId() && this.getPlatformSecretKey());
   }
 
   async getAuthorizationUrl(storeId: string, state: string, redirectUri: string): Promise<string> {
-    throw new Error(
-      "Paystack uses Direct Secret Key and Public Key authentication for merchant integration. Please enter your Paystack API keys directly in the API Key configuration dialog."
-    );
+    const clientId = this.getClientId();
+    if (!clientId) {
+      throw new Error("Paystack OAuth requires a valid Client ID (PAYSTACK_CLIENT_ID). Please configure your platform environment variables.");
+    }
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: clientId,
+      state,
+      redirect_uri: redirectUri,
+    });
+    return `https://connect.paystack.com/oauth2/authorize?${params.toString()}`;
   }
 
   async handleOAuthCallback(storeId: string, code: string, state: string, redirectUri: string): Promise<OAuthCallbackResult> {

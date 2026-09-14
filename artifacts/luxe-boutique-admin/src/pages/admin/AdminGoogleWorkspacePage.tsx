@@ -3248,18 +3248,10 @@ Thank you for shopping with LUXE Boutique Concierge.
                   <button
                     onClick={handleTestWorkspaceApi}
                     disabled={testingApi}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-[Manrope] font-bold rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                    className="px-4 py-2.5 bg-[#006c49] hover:bg-[#005237] text-white text-xs font-[Manrope] font-bold rounded-lg transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
                   >
                     <MdRefresh className={`text-sm ${testingApi ? "animate-spin" : ""}`} />
                     {testingApi ? "Testing Connection..." : "Test API Connection"}
-                  </button>
-                  <button
-                    onClick={handleSaveWorkspaceCreds}
-                    disabled={savingCreds}
-                    className="px-5 py-2.5 bg-[#006c49] hover:bg-[#005237] text-white text-xs font-[Manrope] font-bold rounded-lg transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
-                  >
-                    <MdSave className="text-sm" />
-                    {savingCreds ? "Saving..." : "Save Credentials"}
                   </button>
                 </div>
               </div>
@@ -3314,90 +3306,20 @@ Thank you for shopping with LUXE Boutique Concierge.
                 </div>
               )}
 
-              {/* Form Inputs */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                    Google OAuth Client ID
-                  </label>
-                  <input
-                    type="text"
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    placeholder="e.g. 123456789-abcdef.apps.googleusercontent.com"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:border-[#006c49]"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">From Google Cloud Console → APIs & Services → Credentials.</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                    Google OAuth Client Secret
-                  </label>
-                  <input
-                    type="password"
-                    value={clientSecret}
-                    onChange={(e) => setClientSecret(e.target.value)}
-                    placeholder="GOCSPX-..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:border-[#006c49]"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">Keep confidential. Stored locally in browser session storage.</p>
-                </div>
-
-                {/* Google Chat Integration Card */}
-                <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#006c49] flex items-center justify-center font-bold">
-                        <MdChat className="text-base" />
-                      </div>
-                      <div>
-                        <h4 className="font-serif font-bold text-sm text-slate-900">Google Chat Space Webhook Integration</h4>
-                        <p className="text-[11px] text-slate-500">Post instant staff alerts for VIP appointments & orders into your Google Chat space.</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleTestChatWebhook}
-                      disabled={testingChatWebhook || !chatWebhookUrl}
-                      className="px-3.5 py-1.5 bg-white border border-slate-300 text-slate-800 rounded-lg text-xs font-bold hover:bg-slate-100 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      <MdSend className="text-xs text-[#006c49]" />
-                      {testingChatWebhook ? "Posting Alert..." : "Test Google Chat Alert"}
-                    </button>
-                  </div>
-
+              {/* Form Inputs Removed for CaaS */}
+              <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl mb-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <MdKey className="text-2xl text-slate-400" />
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                      Google Chat Space Incoming Webhook URL
-                    </label>
-                    <input
-                      type="url"
-                      value={chatWebhookUrl}
-                      onChange={(e) => setChatWebhookUrl(e.target.value)}
-                      placeholder="https://chat.googleapis.com/v1/spaces/AAAA.../messages?key=...&token=..."
-                      className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:border-[#006c49]"
-                    />
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Create a webhook in Google Chat: Go to your Space &rsaquo; Space Settings &rsaquo; Apps & Integrations &rsaquo; Manage Webhooks.
-                    </p>
+                    <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                    <p className="text-xs font-[Manrope] text-slate-500 mt-1">Manual entry of Google Workspace credentials is disabled in this environment.</p>
                   </div>
                 </div>
-
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                    Google Maps / API Key (Optional for Geocoding & Places)
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="AIzaSy..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:border-[#006c49]"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">Used for store locator geocoding and address validation in calendar appointments.</p>
-                </div>
+                <ul className="space-y-2 text-xs font-[Manrope] text-slate-600 list-disc list-inside">
+                  <li><span className="font-bold text-slate-800">Google OAuth Client ID & Secret</span></li>
+                  <li><span className="font-bold text-slate-800">Google Maps API Key</span></li>
+                  <li><span className="font-bold text-slate-800">Google Chat Webhook URL</span></li>
+                </ul>
               </div>
             </div>
 

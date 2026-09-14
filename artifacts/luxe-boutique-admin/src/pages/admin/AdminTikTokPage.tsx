@@ -16,6 +16,7 @@ import {
   MdStorefront,
   MdLiveTv,
   MdPercent,
+  MdKey,
 } from "react-icons/md";
 import AdminLayout from "./AdminLayout";
 
@@ -157,69 +158,18 @@ export default function AdminTikTokPage() {
                 TikTok Open Platform API Credentials
               </h2>
 
-              <div>
-                <label className="text-[10px] font-[Manrope] font-bold uppercase tracking-widest text-[#45464d] block mb-2">
-                  TikTok App Key <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={appKey}
-                  onChange={(e) => setAppKey(e.target.value)}
-                  placeholder="e.g. 6a7b8c9d0e1f"
-                  className="w-full bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg px-4 py-3 font-[Manrope] text-sm outline-none focus:border-black transition-colors"
-                />
-                <p className="mt-1 text-[11px] font-[Manrope] text-[#7c839b]">
-                  Obtain from your TikTok Developer Portal App details.
-                </p>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-[Manrope] font-bold uppercase tracking-widest text-[#45464d] block mb-2">
-                  TikTok App Secret <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showSecret ? "text" : "password"}
-                    value={appSecret}
-                    onChange={(e) => setAppSecret(e.target.value)}
-                    placeholder="••••••••••••••••"
-                    className="w-full bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg px-4 py-3 font-[Manrope] text-sm outline-none focus:border-black transition-colors pr-12"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSecret(!showSecret)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7c839b] hover:text-black transition-colors"
-                  >
-                    {showSecret ? <MdVisibilityOff className="text-lg" /> : <MdVisibility className="text-lg" />}
-                  </button>
+              <div className="p-6 bg-[#f8f9ff] border border-[#c6c6cd] rounded-xl mb-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <MdKey className="text-2xl text-[#7c839b]" />
+                  <div>
+                    <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                    <p className="text-xs font-[Manrope] text-[#7c839b] mt-1">Manual entry of TikTok Shop API credentials is disabled in this environment.</p>
+                  </div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-[Manrope] font-bold uppercase tracking-widest text-[#45464d] block mb-2">
-                    TikTok Shop ID <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={shopId}
-                    onChange={(e) => setShopId(e.target.value)}
-                    placeholder="e.g. USLC123456"
-                    className="w-full bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg px-4 py-3 font-[Manrope] text-sm outline-none focus:border-black transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-[Manrope] font-bold uppercase tracking-widest text-[#45464d] block mb-2">
-                    Shop Display Name
-                  </label>
-                  <input
-                    type="text"
-                    value={shopName}
-                    onChange={(e) => setShopName(e.target.value)}
-                    placeholder="Luxe Boutique TikTok Store"
-                    className="w-full bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg px-4 py-3 font-[Manrope] text-sm outline-none focus:border-black transition-colors"
-                  />
-                </div>
+                <ul className="space-y-2 text-xs font-[Manrope] text-black list-disc list-inside">
+                  <li><span className="font-bold">TikTok App Key & Secret</span></li>
+                  <li><span className="font-bold">TikTok Shop ID & Display Name</span></li>
+                </ul>
               </div>
 
               {/* Toggles */}

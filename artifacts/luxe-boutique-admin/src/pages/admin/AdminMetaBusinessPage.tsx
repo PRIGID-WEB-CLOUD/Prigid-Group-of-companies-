@@ -317,7 +317,7 @@ export default function AdminMetaBusinessPage() {
         <header className="mb-8">
           <Link
             id="back-to-channel-hub"
-            href="/admin/channels"
+            href="/seller/channels"
             className="inline-flex items-center gap-1.5 text-[#7c839b] hover:text-[#006c49] transition-colors font-[Manrope] font-bold text-xs tracking-widest uppercase mb-3 no-underline"
           >
             <MdArrowBack className="text-base" /> Back to Channel Hub

@@ -55,7 +55,7 @@ export class FlutterwavePaymentProvider implements IPaymentProvider {
   async getAuthorizationUrl(storeId: string, state: string, redirectUri: string): Promise<string> {
     const clientId = this.getClientId();
     if (!clientId || clientId.startsWith("pk_") || clientId.startsWith("FLWPUBK")) {
-      throw new Error("Flutterwave OAuth requires a valid Client App ID (FLUTTERWAVE_CLIENT_ID). Please use Direct API Key entry for your Secret Key and Public Key.");
+      throw new Error("Flutterwave OAuth requires a valid Client App ID (FLUTTERWAVE_CLIENT_ID). Please configure your platform environment variables.");
     }
     const params = new URLSearchParams({
       response_type: "code",

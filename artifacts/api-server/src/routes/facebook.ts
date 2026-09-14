@@ -1,9 +1,10 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
+import { type TenantRequest } from "../middleware/tenantContext";
 import { randomUUID } from "crypto";
 import path from "node:path";
 import fs from "node:fs";
 import multer from "multer";
-import { addEvent, getChannelCredentials } from "./channels";
+import { addEvent, getChannelCredentials, persistCredentials } from "./channels";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { uploadsDir } from "./upload";
 import {
@@ -16,6 +17,21 @@ import { and, desc, eq } from "drizzle-orm";
 import { prepareInstagramImage, resolveInstagramPublicUrl } from "../lib/instagram-image";
 
 const router = Router();
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function getFbCreds(storeId: string) { return getChannelCredentials("facebook", storeId); }
+
+async function getCommerceMetaCreds(storeId: string) {
+  const commerceCreds = await getChannelCredentials("commerce", storeId);
+  const fbCreds = await getChannelCredentials("facebook", storeId);
+  const metaBus = await getChannelCredentials("meta_business", storeId);
+
+  const catalogId = (commerceCreds["catalog_id"] || fbCreds["catalog_id"] || metaBus["catalog_id"] || "").trim();
+  const token = (commerceCreds["page_access_token"] || fbCreds["page_access_token"] || metaBus["page_access_token"] || metaBus["master_access_token"] || fbCreds["access_token"] || commerceCreds["access_token"] || "").trim();
+
+  return { catalogId, token };
+}
 
 const mediaStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -85,9 +101,10 @@ function resolvePublicUrl(req: any, rawUrl: string): string {
   return resolveInstagramPublicUrl(req, rawUrl);
 }
 
-router.get("/facebook/reviews-feed.csv", async (_req, res) => {
+router.get("/facebook/reviews-feed.csv", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
-    const reviews = await db.select().from(reviewsTable).orderBy(desc(reviewsTable.createdAt));
+    const reviews = await db.select().from(reviewsTable).where(eq(reviewsTable.storeId, storeId)).orderBy(desc(reviewsTable.createdAt));
     const header = "product_id,review_id,rating,review_title,review_text,reviewer_name,review_date";
     const rows = reviews.map((r) => {
       const title = r.comment.length > 50 ? r.comment.slice(0, 47) + "..." : r.comment;
@@ -108,16 +125,17 @@ router.get("/facebook/reviews-feed.csv", async (_req, res) => {
 
 // ── Public Pixel Config ──────────────────────────────────────────────────────
 
-router.get("/m-config", async (_req, res) => {
+router.get("/m-config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
-    const fbCreds = await getFbCreds();
+    const fbCreds = await getFbCreds(storeId);
     const pixelId = fbCreds["pixel_id"];
     
     if (!pixelId) {
       return res.json({ enabled: false });
     }
 
-    const events = await db.select().from(facebookPixelEventsTable).where(eq(facebookPixelEventsTable.enabled, true));
+    const events = await db.select().from(facebookPixelEventsTable).where(and(eq(facebookPixelEventsTable.enabled, true), eq(facebookPixelEventsTable.storeId, storeId)));
     
     return res.json({
       enabled: true,
@@ -131,7 +149,8 @@ router.get("/m-config", async (_req, res) => {
 
 // ── Conversions API (CAPI) ────────────────────────────────────────────────────
 
-router.post("/m-event", async (req, res) => {
+router.post("/m-event", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
     const { eventName, params, url, userData } = req.body as { 
       eventName: string; 
@@ -139,7 +158,7 @@ router.post("/m-event", async (req, res) => {
       url: string; 
       userData?: any 
     };
-    const creds = await getFbCreds();
+    const creds = await getFbCreds(storeId);
     const pixelId = creds["pixel_id"];
     const token = creds["page_access_token"];
 
@@ -149,7 +168,7 @@ router.post("/m-event", async (req, res) => {
 
     // Check if event is enabled
     const [eventConfig] = await db.select().from(facebookPixelEventsTable)
-      .where(eq(facebookPixelEventsTable.storeEvent, eventName)).limit(1);
+      .where(and(eq(facebookPixelEventsTable.storeEvent, eventName), eq(facebookPixelEventsTable.storeId, storeId))).limit(1);
     
     if (eventConfig && !eventConfig.enabled) {
       return res.json({ ok: true, status: "ignored", reason: "event_disabled" });
@@ -204,7 +223,8 @@ router.post("/m-event", async (req, res) => {
   }
 });
 
-router.get("/facebook/catalog/feed.xml", async (req, res) => {
+router.get("/facebook/catalog/feed.xml", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const queryDomain = req.query.domain as string;
   const storeDomain = queryDomain || req.headers.host || process.env["REPLIT_DEV_DOMAIN"] || "luxeboutique.com";
   const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -223,11 +243,11 @@ router.get("/facebook/catalog/feed.xml", async (req, res) => {
     })
     .from(productsTable)
     .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
-    .where(and(eq(productsTable.status, "ACTIVE"), eq(productsTable.metaSyncEnabled, true)));
+    .where(and(eq(productsTable.status, "ACTIVE"), eq(productsTable.metaSyncEnabled, true), eq(productsTable.storeId, storeId)));
 
   // Fetch and apply sync rules from database
   let [settings] = await db.select().from(facebookCatalogSettingsTable)
-    .where(eq(facebookCatalogSettingsTable.id, "default")).limit(1);
+    .where(and(eq(facebookCatalogSettingsTable.id, "default"), eq(facebookCatalogSettingsTable.storeId, storeId))).limit(1);
 
   let filteredRows = rows;
   if (settings) {
@@ -309,10 +329,8 @@ router.use("/meta", requireAdmin);
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getFbCreds() { return getChannelCredentials("facebook"); }
-
-async function fbGraphGet(path: string, params: Record<string, string> = {}): Promise<{ ok: boolean; data?: unknown; error?: string }> {
-  const creds = await getFbCreds();
+async function fbGraphGet(path: string, storeId: string, params: Record<string, string> = {}): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+  const creds = await getFbCreds(storeId);
   const token = creds["page_access_token"];
   if (!token) return { ok: false, error: "Missing Facebook credentials — add Page Access Token in channel settings." };
   const url = new URL(`https://graph.facebook.com/v21.0${path}`);
@@ -330,14 +348,15 @@ async function fbGraphGet(path: string, params: Record<string, string> = {}): Pr
 
 // ── Connections ───────────────────────────────────────────────────────────────
 
-router.get("/facebook/connections", async (_req, res) => {
+router.get("/facebook/connections", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const keys = ["facebook", "instagram", "pixel", "messenger"];
   const rows = await Promise.all(keys.map(async (connectionKey) => {
     let [row] = await db.select().from(facebookConnectionsTable)
-      .where(eq(facebookConnectionsTable.connectionKey, connectionKey)).limit(1);
+      .where(and(eq(facebookConnectionsTable.connectionKey, connectionKey), eq(facebookConnectionsTable.storeId, storeId))).limit(1);
     if (!row) {
       const [created] = await db.insert(facebookConnectionsTable)
-        .values({ id: randomUUID(), connectionKey, active: false }).returning();
+        .values({ id: randomUUID(), storeId, connectionKey, active: false }).returning();
       return created;
     }
     return row;
@@ -345,13 +364,14 @@ router.get("/facebook/connections", async (_req, res) => {
   return res.json(rows);
 });
 
-router.put("/facebook/connections/:connectionKey", async (req, res) => {
+router.put("/facebook/connections/:connectionKey", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const connectionKey = req.params.connectionKey as string;
   const { active } = req.body as { active: boolean };
   const [updated] = await db.insert(facebookConnectionsTable)
-    .values({ id: randomUUID(), connectionKey, active: Boolean(active) })
+    .values({ id: randomUUID(), storeId, connectionKey, active: Boolean(active) })
     .onConflictDoUpdate({
-      target: facebookConnectionsTable.connectionKey,
+      target: [facebookConnectionsTable.storeId, facebookConnectionsTable.connectionKey],
       set: { active: Boolean(active), updatedAt: new Date() },
     }).returning();
   return res.json(updated);
@@ -359,30 +379,34 @@ router.put("/facebook/connections/:connectionKey", async (req, res) => {
 
 // ── Catalog & Feed ────────────────────────────────────────────────────────────
 
-router.get("/facebook/catalog", async (_req, res) => {
+router.get("/facebook/catalog", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   let [catalog] = await db.select().from(facebookCatalogSettingsTable)
-    .where(eq(facebookCatalogSettingsTable.id, "default")).limit(1);
+    .where(and(eq(facebookCatalogSettingsTable.id, "default"), eq(facebookCatalogSettingsTable.storeId, storeId))).limit(1);
   if (!catalog) {
     try {
       [catalog] = await db.insert(facebookCatalogSettingsTable).values({
         id: "default",
+        storeId,
         includedCategories: ["Ready-to-Wear", "Accessories", "Footwear", "Fine Jewellery", "Maison"],
         minPrice: 0,
         maxPrice: 10000,
       }).onConflictDoNothing().returning();
     } catch {}
   }
-  return res.json(catalog ?? { id: "default", includedCategories: ["Ready-to-Wear", "Accessories", "Footwear"], minPrice: 0, maxPrice: 10000 });
+  return res.json(catalog ?? { id: "default", storeId, includedCategories: ["Ready-to-Wear", "Accessories", "Footwear"], minPrice: 0, maxPrice: 10000 });
 });
 
-router.put("/facebook/catalog", async (req, res) => {
+router.put("/facebook/catalog", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const [catalog] = await db.insert(facebookCatalogSettingsTable).values({
     id: "default",
+    storeId,
     includedCategories: Array.isArray(req.body.includedCategories) ? req.body.includedCategories : [],
     minPrice: Number(req.body.minPrice ?? 0),
     maxPrice: Number(req.body.maxPrice ?? 10000),
   }).onConflictDoUpdate({
-    target: facebookCatalogSettingsTable.id,
+    target: [facebookCatalogSettingsTable.storeId, facebookCatalogSettingsTable.id],
     set: {
       includedCategories: Array.isArray(req.body.includedCategories) ? req.body.includedCategories : [],
       minPrice: Number(req.body.minPrice ?? 0),
@@ -393,13 +417,14 @@ router.put("/facebook/catalog", async (req, res) => {
   return res.json(catalog);
 });
 
-router.post("/facebook/catalog/discover", async (req, res) => {
+router.post("/facebook/catalog/discover", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
-    const creds = await getChannelCredentials("commerce");
+    const creds = await getChannelCredentials("commerce", storeId);
     let token = req.body.page_access_token || creds["page_access_token"];
     
     // Fallback to meta_business master token if needed (for full catalog discovery access)
-    const metaBus = await getChannelCredentials("meta_business");
+    const metaBus = await getChannelCredentials("meta_business", storeId);
     const masterToken = metaBus["master_access_token"];
     if (!token && masterToken) token = masterToken;
 
@@ -449,22 +474,11 @@ router.post("/facebook/catalog/discover", async (req, res) => {
     const discovered = Array.from(unique.values());
     
     // Save to DB
-    const newCreds = {
+    await persistCredentials("commerce", {
       ...creds,
       page_access_token: token,
-      discovered_catalogs: discovered // Gracefully handle empty array
-    };
-    
-    await db.insert(channelCredentialsTable)
-      .values({
-        channel: "commerce",
-        data: newCreds,
-        updatedAt: new Date()
-      })
-      .onConflictDoUpdate({
-        target: channelCredentialsTable.channel,
-        set: { data: newCreds, updatedAt: new Date() }
-      });
+      discovered_catalogs: JSON.stringify(discovered) // Gracefully handle empty array
+    }, storeId);
       
     return res.json({ success: true, catalogs: discovered });
   } catch (err) {
@@ -472,9 +486,10 @@ router.post("/facebook/catalog/discover", async (req, res) => {
   }
 });
 
-router.get("/facebook/catalog/info", async (_req, res) => {
-  const creds = await getChannelCredentials("commerce");
-  const fbCreds = await getFbCreds();
+router.get("/facebook/catalog/info", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const creds = await getChannelCredentials("commerce", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const catalogId = creds["catalog_id"] || fbCreds["catalog_id"];
   const token = creds["page_access_token"] || fbCreds["page_access_token"];
   if (!catalogId || !token) return res.status(400).json({ error: "Missing Commerce credentials — add Catalog ID and Page Access Token." });
@@ -491,9 +506,10 @@ router.get("/facebook/catalog/info", async (_req, res) => {
   }
 });
 
-router.patch("/facebook/catalog/info", async (req, res) => {
-  const creds = await getChannelCredentials("commerce");
-  const fbCreds = await getFbCreds();
+router.patch("/facebook/catalog/info", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const creds = await getChannelCredentials("commerce", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const catalogId = creds["catalog_id"] || fbCreds["catalog_id"];
   const token = creds["page_access_token"] || fbCreds["page_access_token"];
   if (!catalogId || !token) return res.status(400).json({ error: "Missing Commerce credentials — add Catalog ID and Page Access Token." });
@@ -512,26 +528,16 @@ router.patch("/facebook/catalog/info", async (req, res) => {
     if (!r.ok || data["error"]) {
       return res.status(400).json({ error: (data["error"] as Record<string, string>)?.message ?? `HTTP ${r.status}` });
     }
-    addEvent("commerce", "Meta Catalog Renamed", `Updated catalog ${catalogId} name to "${name.trim()}"`, "sync");
+    addEvent("commerce", "Meta Catalog Renamed", `Updated catalog ${catalogId} name to "${name.trim()}"`, "sync", storeId);
     return res.json({ success: true, name: name.trim() });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-async function getCommerceMetaCreds() {
-  const commerceCreds = await getChannelCredentials("commerce");
-  const fbCreds = await getChannelCredentials("facebook");
-  const metaBus = await getChannelCredentials("meta_business");
-
-  const catalogId = (commerceCreds["catalog_id"] || fbCreds["catalog_id"] || metaBus["catalog_id"] || "").trim();
-  const token = (commerceCreds["page_access_token"] || fbCreds["page_access_token"] || metaBus["page_access_token"] || metaBus["master_access_token"] || fbCreds["access_token"] || commerceCreds["access_token"] || "").trim();
-
-  return { catalogId, token };
-}
-
-router.get("/facebook/catalog/products", async (_req, res) => {
-  const { catalogId, token } = await getCommerceMetaCreds();
+router.get("/facebook/catalog/products", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const { catalogId, token } = await getCommerceMetaCreds(storeId);
 
   if (!catalogId || !token) {
     return res.status(400).json({
@@ -556,7 +562,8 @@ router.get("/facebook/catalog/products", async (_req, res) => {
   }
 });
 
-router.post("/facebook/catalog/products", async (req, res) => {
+router.post("/facebook/catalog/products", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const {
     retailerId,
     title,
@@ -587,7 +594,7 @@ router.post("/facebook/catalog/products", async (req, res) => {
     return res.status(400).json({ error: "Product title and price are required." });
   }
 
-  const { catalogId, token } = await getCommerceMetaCreds();
+  const { catalogId, token } = await getCommerceMetaCreds(storeId);
 
   if (!catalogId || !token) {
     return res.status(400).json({ error: "Missing Commerce credentials — add Catalog ID and Page Access Token." });
@@ -630,14 +637,15 @@ router.post("/facebook/catalog/products", async (req, res) => {
     if (!r.ok || data["error"]) {
       return res.status(400).json({ error: (data["error"] as Record<string, string>)?.message ?? `HTTP ${r.status}` });
     }
-    addEvent("commerce", "Product Added to Meta Catalog", `Added "${title}" (${itemId}) to Meta Catalog`, "sync");
+    addEvent("commerce", "Product Added to Meta Catalog", `Added "${title}" (${itemId}) to Meta Catalog`, "sync", storeId);
     return res.status(201).json({ success: true, retailerId: itemId, handles: data["handles"] });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.patch("/facebook/catalog/products/:retailerId", async (req, res) => {
+router.patch("/facebook/catalog/products/:retailerId", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const retailerId = req.params.retailerId as string;
   const { title, price, availability, condition, description, imageUrl, url: productUrl } = req.body as {
     title?: string;
@@ -649,7 +657,7 @@ router.patch("/facebook/catalog/products/:retailerId", async (req, res) => {
     url?: string;
   };
 
-  const { catalogId, token } = await getCommerceMetaCreds();
+  const { catalogId, token } = await getCommerceMetaCreds(storeId);
 
   if (!catalogId || !token) {
     return res.status(400).json({ error: "Missing Commerce credentials — add Catalog ID and Page Access Token." });
@@ -692,7 +700,7 @@ router.patch("/facebook/catalog/products/:retailerId", async (req, res) => {
 
     // Keep local database in sync if retailerId matches a store product
     try {
-      const [localProduct] = await db.select().from(productsTable).where(eq(productsTable.id, retailerId)).limit(1);
+      const [localProduct] = await db.select().from(productsTable).where(and(eq(productsTable.id, retailerId), eq(productsTable.storeId, storeId))).limit(1);
       if (localProduct) {
         const localUpdates: Record<string, any> = {};
         if (title) localUpdates.name = title;
@@ -704,22 +712,23 @@ router.patch("/facebook/catalog/products/:retailerId", async (req, res) => {
         if (availability === "out of stock") localUpdates.stock = 0;
         if (imageUrl) localUpdates.imageUrl = imageUrl;
         if (Object.keys(localUpdates).length > 0) {
-          await db.update(productsTable).set(localUpdates).where(eq(productsTable.id, retailerId));
+          await db.update(productsTable).set(localUpdates).where(and(eq(productsTable.id, retailerId), eq(productsTable.storeId, storeId)));
         }
       }
     } catch {}
 
-    addEvent("commerce", "Meta Catalog Product Updated", `Updated item "${retailerId}" in Meta catalog`, "sync");
+    addEvent("commerce", "Meta Catalog Product Updated", `Updated item "${retailerId}" in Meta catalog`, "sync", storeId);
     return res.json({ success: true, handles: data["handles"] });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.delete("/facebook/catalog/products/:graphId", async (req, res) => {
+router.delete("/facebook/catalog/products/:graphId", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const graphId = req.params.graphId as string;
   const retailerId = (req.query.retailerId as string) || "";
-  const { catalogId, token } = await getCommerceMetaCreds();
+  const { catalogId, token } = await getCommerceMetaCreds(storeId);
 
   if (!catalogId || !token) {
     return res.status(400).json({ error: "Missing Commerce credentials — add Catalog ID and Page Access Token." });
@@ -742,13 +751,13 @@ router.delete("/facebook/catalog/products/:graphId", async (req, res) => {
     if (retailerId) {
       try {
         console.log(`[Meta Commerce] Purging local record for product ${retailerId}`);
-        await db.delete(productsTable).where(eq(productsTable.id, retailerId));
+        await db.delete(productsTable).where(and(eq(productsTable.id, retailerId), eq(productsTable.storeId, storeId)));
       } catch (dbErr) {
         console.error(`[Meta Commerce] Non-fatal error purging local product ${retailerId}:`, dbErr);
       }
     }
 
-    addEvent("commerce", "Meta Catalog Product Deleted", `Deleted Graph item "${graphId}" from Meta catalog and local database`, "sync");
+    addEvent("commerce", "Meta Catalog Product Deleted", `Deleted Graph item "${graphId}" from Meta catalog and local database`, "sync", storeId);
     return res.json({ success: true });
   } catch (err) {
     console.error(`[Meta Commerce] Error deleting product ${graphId}:`, err);
@@ -756,8 +765,9 @@ router.delete("/facebook/catalog/products/:graphId", async (req, res) => {
   }
 });
 
-router.post("/facebook/catalog/sync", async (req, res) => {
-  const { catalogId, token } = await getCommerceMetaCreds();
+router.post("/facebook/catalog/sync", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const { catalogId, token } = await getCommerceMetaCreds(storeId);
 
   if (!catalogId || !token) {
     return res.status(400).json({
@@ -781,7 +791,7 @@ router.post("/facebook/catalog/sync", async (req, res) => {
     })
     .from(productsTable)
     .leftJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
-    .where(and(eq(productsTable.status, "ACTIVE"), eq(productsTable.metaSyncEnabled, true)));
+    .where(and(eq(productsTable.status, "ACTIVE"), eq(productsTable.metaSyncEnabled, true), eq(productsTable.storeId, storeId)));
 
   if (rows.length === 0) {
     return res.status(400).json({ error: "No active products found in store inventory to sync." });
@@ -789,7 +799,7 @@ router.post("/facebook/catalog/sync", async (req, res) => {
 
   // Fetch and apply sync rules from database
   let [settings] = await db.select().from(facebookCatalogSettingsTable)
-    .where(eq(facebookCatalogSettingsTable.id, "default")).limit(1);
+    .where(and(eq(facebookCatalogSettingsTable.id, "default"), eq(facebookCatalogSettingsTable.storeId, storeId))).limit(1);
 
   let filteredRows = rows;
   if (settings) {
@@ -898,11 +908,11 @@ router.post("/facebook/catalog/sync", async (req, res) => {
   totalSynced = syncedCount;
 
   if (errors.length > 0 && totalSynced === 0) {
-    addEvent("commerce", "Catalog Sync Error", errors[0]!, "error");
+    addEvent("commerce", "Catalog Sync Error", errors[0]!, "error", storeId);
     return res.status(400).json({ ok: false, synced: 0, errors, error: errors[0] });
   }
 
-  addEvent("commerce", `Catalog synced — ${totalSynced} product${totalSynced !== 1 ? "s" : ""} pushed`, `Live data pushed to Facebook Catalog ${catalogId}.`, "sync");
+  addEvent("commerce", `Catalog synced — ${totalSynced} product${totalSynced !== 1 ? "s" : ""} pushed`, `Live data pushed to Facebook Catalog ${catalogId}.`, "sync", storeId);
   return res.json({
     ok: true,
     synced: totalSynced,
@@ -913,59 +923,68 @@ router.post("/facebook/catalog/sync", async (req, res) => {
 
 // ── Pixel Events ───────────────────────────────────────────────────────────────
 
-router.get("/facebook/pixel-events", async (_req, res) => {
-  const list = await db.select().from(facebookPixelEventsTable).orderBy(desc(facebookPixelEventsTable.updatedAt));
+router.get("/facebook/pixel-events", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const list = await db.select().from(facebookPixelEventsTable).where(eq(facebookPixelEventsTable.storeId, storeId)).orderBy(desc(facebookPixelEventsTable.updatedAt));
   return res.json(list);
 });
 
-router.put("/facebook/pixel-events/:id", async (req, res) => {
+router.put("/facebook/pixel-events/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { enabled } = req.body as { enabled: boolean };
   const [updated] = await db.update(facebookPixelEventsTable)
     .set({ enabled: Boolean(enabled), updatedAt: new Date() })
-    .where(eq(facebookPixelEventsTable.id, req.params.id as string)).returning();
+    .where(and(eq(facebookPixelEventsTable.id, req.params.id as string), eq(facebookPixelEventsTable.storeId, storeId))).returning();
   if (!updated) return res.status(404).json({ error: "Pixel event not found" });
   return res.json(updated);
 });
 
 // ── Audiences ─────────────────────────────────────────────────────────────────
 
-router.get("/facebook/audiences", async (_req, res) => {
-  const list = await db.select().from(facebookAudiencesTable).orderBy(desc(facebookAudiencesTable.createdAt));
+router.get("/facebook/audiences", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const list = await db.select().from(facebookAudiencesTable).where(eq(facebookAudiencesTable.storeId, storeId)).orderBy(desc(facebookAudiencesTable.createdAt));
   return res.json(list);
 });
 
-router.post("/facebook/audiences", async (req, res) => {
+router.post("/facebook/audiences", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { name, type } = req.body as { name: string; type: string };
   if (!name) return res.status(400).json({ error: "Audience name is required." });
   const [aud] = await db.insert(facebookAudiencesTable)
-    .values({ id: randomUUID(), name, type: type || "Custom", size: "0", status: "Active" }).returning();
-  addEvent("facebook", `Audience created: ${name}`, "Audience registered.", "info");
+    .values({ id: randomUUID(), storeId, name, type: type || "Custom", size: "0", status: "Active" }).returning();
+  addEvent("facebook", `Audience created: ${name}`, "Audience registered.", "info", storeId);
   return res.status(201).json(aud);
 });
 
-router.put("/facebook/audiences/:id", async (req, res) => {
+router.put("/facebook/audiences/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { status } = req.body as { status: string };
   const [updated] = await db.update(facebookAudiencesTable).set({ status })
-    .where(eq(facebookAudiencesTable.id, req.params.id as string)).returning();
+    .where(and(eq(facebookAudiencesTable.id, req.params.id as string), eq(facebookAudiencesTable.storeId, storeId))).returning();
   if (!updated) return res.status(404).json({ error: "Audience not found" });
   return res.json(updated);
 });
 
-router.delete("/facebook/audiences/:id", async (req, res) => {
-  await db.delete(facebookAudiencesTable).where(eq(facebookAudiencesTable.id, req.params.id as string));
+router.delete("/facebook/audiences/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  await db.delete(facebookAudiencesTable).where(and(eq(facebookAudiencesTable.id, req.params.id as string), eq(facebookAudiencesTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
 // ── Page Posts ────────────────────────────────────────────────────────────────
 
-router.get("/facebook/posts", async (_req, res) => {
-  return res.json(await db.select().from(facebookPagePostsTable).orderBy(desc(facebookPagePostsTable.createdAt)));
+router.get("/facebook/posts", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(facebookPagePostsTable).where(eq(facebookPagePostsTable.storeId, storeId)).orderBy(desc(facebookPagePostsTable.createdAt)));
 });
 
-router.post("/facebook/posts", async (req, res) => {
+router.post("/facebook/posts", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { caption, imageUrl, link, postType, scheduledFor, status } = req.body as { caption?: string; imageUrl?: string; link?: string; postType?: string; scheduledFor?: string; status?: string };
   const [post] = await db.insert(facebookPagePostsTable).values({
     id: randomUUID(),
+    storeId,
     caption: caption ?? "",
     imageUrl: imageUrl ?? null,
     link: link ?? null,
@@ -973,14 +992,15 @@ router.post("/facebook/posts", async (req, res) => {
     scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
     status: status ?? "Draft",
   }).returning();
-  addEvent("facebook", `Post ${post.status.toLowerCase()}: ${post.caption.slice(0, 60)}…`, post.status === "Published" ? "Post is live on your Facebook Page." : `Saved as ${post.status.toLowerCase()}.`, "sync");
+  addEvent("facebook", `Post ${post.status.toLowerCase()}: ${post.caption.slice(0, 60)}…`, post.status === "Published" ? "Post is live on your Facebook Page." : `Saved as ${post.status.toLowerCase()}.`, "sync", storeId);
   return res.status(201).json(post);
 });
 
-router.get("/facebook/pages/search", async (req, res) => {
+router.get("/facebook/pages/search", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const q = req.query.q as string;
   if (!q) return res.json([]);
-  const result = await fbGraphGet("/pages/search", { q, fields: "id,name,username,picture" });
+  const result = await fbGraphGet("/pages/search", storeId, { q, fields: "id,name,username,picture" });
   if (!result.ok) {
     // Return mock results as fallback so search is fully functional in development/sandbox
     const mocks = [
@@ -995,18 +1015,19 @@ router.get("/facebook/pages/search", async (req, res) => {
   return res.json((result.data as any)?.data || []);
 });
 
-router.post("/facebook/posts/:id/publish", async (req, res) => {
+router.post("/facebook/posts/:id/publish", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const id = req.params.id as string;
   let { pageId, pageAccessToken } = req.body as { pageId?: string; pageAccessToken?: string };
 
   if (!pageId || !pageAccessToken) {
-    const dbCreds = await getFbCreds();
+    const dbCreds = await getFbCreds(storeId);
     pageId = dbCreds["page_id"];
     pageAccessToken = dbCreds["page_access_token"];
   }
 
   const [post] = await db.select().from(facebookPagePostsTable)
-    .where(eq(facebookPagePostsTable.id, id)).limit(1);
+    .where(and(eq(facebookPagePostsTable.id, id), eq(facebookPagePostsTable.storeId, storeId))).limit(1);
   if (!post) return res.status(404).json({ error: "Post not found" });
 
   if (!pageId || !pageAccessToken) {
@@ -1052,8 +1073,8 @@ router.post("/facebook/posts/:id/publish", async (req, res) => {
     }
 
     const [updated] = await db.update(facebookPagePostsTable).set({ status: "Published" })
-      .where(eq(facebookPagePostsTable.id, id)).returning();
-    addEvent("facebook", "Post published to Facebook Page", `Post ID: ${String(data["id"] ?? id)}`, "sync");
+      .where(and(eq(facebookPagePostsTable.id, id), eq(facebookPagePostsTable.storeId, storeId))).returning();
+    addEvent("facebook", "Post published to Facebook Page", `Post ID: ${String(data["id"] ?? id)}`, "sync", storeId);
     return res.json(updated);
   } catch (err) {
     return res.status(500).json({ error: String(err) });
@@ -1071,7 +1092,8 @@ router.post("/facebook/reels/publish", (req, res, next) => {
     }
     next();
   });
-}, async (req, res) => {
+}, async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   let { pageId, pageAccessToken, description, title, videoUrl } = req.body as {
     pageId?: string;
     pageAccessToken?: string;
@@ -1081,7 +1103,7 @@ router.post("/facebook/reels/publish", (req, res, next) => {
   };
 
   if (!pageId || !pageAccessToken) {
-    const dbCreds = await getFbCreds();
+    const dbCreds = await getFbCreds(storeId);
     pageId = dbCreds["page_id"];
     pageAccessToken = dbCreds["page_access_token"];
   }
@@ -1206,6 +1228,7 @@ router.post("/facebook/reels/publish", (req, res, next) => {
     try {
       await db.insert(facebookPagePostsTable).values({
         id: randomUUID(),
+        storeId,
         caption: description || title || "Facebook Reel",
         imageUrl: localFilePath ? `/api/uploads/${path.basename(localFilePath)}` : (remoteVideoUrl || null),
         postType: "Reel",
@@ -1214,7 +1237,7 @@ router.post("/facebook/reels/publish", (req, res, next) => {
       });
     } catch {}
 
-    addEvent("facebook", "Facebook Reel Published", `Video Reel ID: ${videoId}`, "sync");
+    addEvent("facebook", "Facebook Reel Published", `Video Reel ID: ${videoId}`, "sync", storeId);
 
     return res.json({
       ok: true,
@@ -1229,9 +1252,10 @@ router.post("/facebook/reels/publish", (req, res, next) => {
 });
 
 // Check status of Facebook Reel upload/processing
-router.get("/facebook/reels/:videoId/status", async (req, res) => {
+router.get("/facebook/reels/:videoId/status", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const videoId = req.params.videoId as string;
-  const dbCreds = await getFbCreds();
+  const dbCreds = await getFbCreds(storeId);
   const pageAccessToken = dbCreds["page_access_token"];
 
   if (!pageAccessToken) {
@@ -1265,7 +1289,8 @@ router.post("/facebook/stories/publish", (req, res, next) => {
     }
     next();
   });
-}, async (req, res) => {
+}, async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   let { pageId, pageAccessToken, mediaType, mediaUrl, caption } = req.body as {
     pageId?: string;
     pageAccessToken?: string;
@@ -1275,7 +1300,7 @@ router.post("/facebook/stories/publish", (req, res, next) => {
   };
 
   if (!pageId || !pageAccessToken) {
-    const dbCreds = await getFbCreds();
+    const dbCreds = await getFbCreds(storeId);
     pageId = dbCreds["page_id"];
     pageAccessToken = dbCreds["page_access_token"];
   }
@@ -1391,6 +1416,7 @@ router.post("/facebook/stories/publish", (req, res, next) => {
       try {
         await db.insert(facebookPagePostsTable).values({
           id: randomUUID(),
+          storeId,
           caption: caption || "Facebook Video Story",
           imageUrl: localFilePath ? `/api/uploads/${path.basename(localFilePath)}` : (remoteMediaUrl || null),
           postType: "Story",
@@ -1399,7 +1425,7 @@ router.post("/facebook/stories/publish", (req, res, next) => {
         });
       } catch {}
 
-      addEvent("facebook", "Facebook Video Story Published", `Story Video ID: ${videoId}`, "sync");
+      addEvent("facebook", "Facebook Video Story Published", `Story Video ID: ${videoId}`, "sync", storeId);
 
       return res.json({
         ok: true,
@@ -1458,6 +1484,7 @@ router.post("/facebook/stories/publish", (req, res, next) => {
       try {
         await db.insert(facebookPagePostsTable).values({
           id: randomUUID(),
+          storeId,
           caption: caption || "Facebook Photo Story",
           imageUrl: photoPublicUrl,
           postType: "Story",
@@ -1466,7 +1493,7 @@ router.post("/facebook/stories/publish", (req, res, next) => {
         });
       } catch {}
 
-      addEvent("facebook", "Facebook Photo Story Published", `Story ID: ${storyData.id || stagedPhotoId}`, "sync");
+      addEvent("facebook", "Facebook Photo Story Published", `Story ID: ${storyData.id || stagedPhotoId}`, "sync", storeId);
 
       return res.json({
         ok: true,
@@ -1482,51 +1509,57 @@ router.post("/facebook/stories/publish", (req, res, next) => {
   }
 });
 
-router.delete("/facebook/posts/:id", async (req, res) => {
-  await db.delete(facebookPagePostsTable).where(eq(facebookPagePostsTable.id, req.params.id as string));
+router.delete("/facebook/posts/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  await db.delete(facebookPagePostsTable).where(and(eq(facebookPagePostsTable.id, req.params.id as string), eq(facebookPagePostsTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
 // ── Post Templates ────────────────────────────────────────────────────────────
 
-router.get("/facebook/post-templates", async (_req, res) => {
-  const list = await db.select().from(facebookPostTemplatesTable).orderBy(desc(facebookPostTemplatesTable.createdAt));
+router.get("/facebook/post-templates", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const list = await db.select().from(facebookPostTemplatesTable).where(eq(facebookPostTemplatesTable.storeId, storeId)).orderBy(desc(facebookPostTemplatesTable.createdAt));
   return res.json(list);
 });
 
-router.post("/facebook/post-templates", async (req, res) => {
+router.post("/facebook/post-templates", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { name, body, postType } = req.body as { name: string; body: string; postType: string };
   const [tpl] = await db.insert(facebookPostTemplatesTable)
-    .values({ id: randomUUID(), name, body, postType: postType ?? "Standard" }).returning();
+    .values({ id: randomUUID(), storeId, name, body, postType: postType ?? "Standard" }).returning();
   return res.status(201).json(tpl);
 });
 
-router.put("/facebook/post-templates/:id/use", async (req, res) => {
+router.put("/facebook/post-templates/:id/use", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const [tpl] = await db.select().from(facebookPostTemplatesTable)
-    .where(eq(facebookPostTemplatesTable.id, req.params.id as string)).limit(1);
+    .where(and(eq(facebookPostTemplatesTable.id, req.params.id as string), eq(facebookPostTemplatesTable.storeId, storeId))).limit(1);
   if (!tpl) return res.status(404).json({ error: "Template not found" });
   const [updated] = await db.update(facebookPostTemplatesTable)
     .set({ usageCount: tpl.usageCount + 1 })
-    .where(eq(facebookPostTemplatesTable.id, tpl.id)).returning();
+    .where(and(eq(facebookPostTemplatesTable.id, tpl.id), eq(facebookPostTemplatesTable.storeId, storeId))).returning();
   return res.json(updated);
 });
 
 // ── Live: Page Info ────────────────────────────────────────────────────────────
 
-router.get("/facebook/page-info", async (_req, res) => {
-  const creds = await getFbCreds();
+router.get("/facebook/page-info", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const creds = await getFbCreds(storeId);
   const pageId = creds["page_id"];
   if (!pageId) return res.status(400).json({ error: "Missing Facebook Page ID — add credentials in channel settings." });
-  const result = await fbGraphGet(`/${pageId}`, { fields: "name,fan_count,followers_count,link,picture" });
+  const result = await fbGraphGet(`/${pageId}`, storeId, { fields: "name,fan_count,followers_count,link,picture" });
   if (!result.ok) return res.status(400).json({ error: result.error });
   return res.json(result.data);
 });
 
 // ── Live: Instagram ────────────────────────────────────────────────────────────
 
-router.get("/facebook/instagram/account", async (_req, res) => {
-  const igCreds = await getChannelCredentials("instagram");
-  const fbCreds = await getFbCreds();
+router.get("/facebook/instagram/account", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const igCreds = await getChannelCredentials("instagram", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const igUserId = igCreds["ig_user_id"];
   const token = igCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!igUserId || !token) return res.status(400).json({ error: "Missing Instagram credentials — add IG Business Account ID and Page Access Token." });
@@ -1543,9 +1576,10 @@ router.get("/facebook/instagram/account", async (_req, res) => {
   }
 });
 
-router.get("/facebook/instagram/media", async (_req, res) => {
-  const igCreds = await getChannelCredentials("instagram");
-  const fbCreds = await getFbCreds();
+router.get("/facebook/instagram/media", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const igCreds = await getChannelCredentials("instagram", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const igUserId = igCreds["ig_user_id"];
   const token = igCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!igUserId || !token) return res.status(400).json({ error: "Missing Instagram credentials." });
@@ -1583,9 +1617,10 @@ router.post("/facebook/instagram/publish", (req, res, next) => {
       next();
     }
   });
-}, async (req, res) => {
-  const igCreds = await getChannelCredentials("instagram");
-  const fbCreds = await getFbCreds();
+}, async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const igCreds = await getChannelCredentials("instagram", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const igUserId = igCreds["ig_user_id"];
   const token = igCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!igUserId || !token) {
@@ -1794,7 +1829,7 @@ router.post("/facebook/instagram/publish", (req, res, next) => {
     }
 
     const eventLabel = isReels ? "Reel published to Instagram" : (isStories ? "Story published to Instagram" : "Post published to Instagram");
-    addEvent("instagram", eventLabel, `Media ID: ${published.id}`, "sync");
+    addEvent("instagram", eventLabel, `Media ID: ${published.id}`, "sync", storeId);
 
     return res.json({
       ok: true,
@@ -1811,9 +1846,10 @@ router.post("/facebook/instagram/publish", (req, res, next) => {
 
 // ── Live: Meta Ads ─────────────────────────────────────────────────────────────
 
-router.get("/facebook/ads/account", async (_req, res) => {
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+router.get("/facebook/ads/account", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const adAccountId = adsCreds["ad_account_id"] || fbCreds["ad_account_id"];
   const token =
     adsCreds["page_access_token"] ||
@@ -1836,9 +1872,10 @@ router.get("/facebook/ads/account", async (_req, res) => {
   }
 });
 
-router.get("/facebook/ads/insights", async (req, res) => {
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+router.get("/facebook/ads/insights", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const adAccountId = adsCreds["ad_account_id"] || fbCreds["ad_account_id"];
   const token =
     adsCreds["page_access_token"] ||
@@ -1871,9 +1908,10 @@ router.get("/facebook/ads/insights", async (req, res) => {
   }
 });
 
-router.get("/facebook/ads/campaigns", async (_req, res) => {
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+router.get("/facebook/ads/campaigns", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const adAccountId = adsCreds["ad_account_id"] || fbCreds["ad_account_id"];
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!adAccountId || !token) return res.status(400).json({ error: "Missing ad account credentials." });
@@ -1891,7 +1929,8 @@ router.get("/facebook/ads/campaigns", async (_req, res) => {
   }
 });
 
-router.post("/facebook/ads/campaigns", async (req, res) => {
+router.post("/facebook/ads/campaigns", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { name, objective, status, dailyBudget, buyingType } = req.body as {
     name: string;
     objective: string;
@@ -1904,8 +1943,8 @@ router.post("/facebook/ads/campaigns", async (req, res) => {
     return res.status(400).json({ error: "Campaign name and objective are required." });
   }
 
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const adAccountId = adsCreds["ad_account_id"] || fbCreds["ad_account_id"];
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!adAccountId || !token) {
@@ -1941,14 +1980,15 @@ router.post("/facebook/ads/campaigns", async (req, res) => {
       const errMsg = (data["error"] as Record<string, string>)?.message ?? `HTTP ${r.status}`;
       return res.status(400).json({ error: errMsg });
     }
-    addEvent("facebook", `Ad Campaign Created: ${name}`, `Campaign ID: ${String(data["id"])}`, "sync");
+    addEvent("facebook", `Ad Campaign Created: ${name}`, `Campaign ID: ${String(data["id"])}`, "sync", storeId);
     return res.status(201).json(data);
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.patch("/facebook/ads/campaigns/:id", async (req, res) => {
+router.patch("/facebook/ads/campaigns/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const campaignId = req.params.id as string;
   const { name, status, dailyBudget } = req.body as {
     name?: string;
@@ -1956,8 +1996,8 @@ router.patch("/facebook/ads/campaigns/:id", async (req, res) => {
     dailyBudget?: number;
   };
 
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!token) return res.status(400).json({ error: "Missing Page Access Token for Meta Ads." });
 
@@ -1978,14 +2018,15 @@ router.patch("/facebook/ads/campaigns/:id", async (req, res) => {
       const errMsg = (data["error"] as Record<string, string>)?.message ?? `HTTP ${r.status}`;
       return res.status(400).json({ error: errMsg });
     }
-    addEvent("facebook", `Ad Campaign Updated`, `Campaign ${campaignId} updated`, "sync");
+    addEvent("facebook", `Ad Campaign Updated`, `Campaign ${campaignId} updated`, "sync", storeId);
     return res.json({ success: true, ...data });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.post("/facebook/ads/campaigns/:id/status", async (req, res) => {
+router.post("/facebook/ads/campaigns/:id/status", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const campaignId = req.params.id as string;
   const { status } = req.body as { status: "ACTIVE" | "PAUSED" | "ARCHIVED" };
 
@@ -1993,8 +2034,8 @@ router.post("/facebook/ads/campaigns/:id/status", async (req, res) => {
     return res.status(400).json({ error: "Status must be ACTIVE, PAUSED, or ARCHIVED." });
   }
 
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!token) return res.status(400).json({ error: "Missing Page Access Token for Meta Ads." });
 
@@ -2010,17 +2051,18 @@ router.post("/facebook/ads/campaigns/:id/status", async (req, res) => {
       const errMsg = (data["error"] as Record<string, string>)?.message ?? `HTTP ${r.status}`;
       return res.status(400).json({ error: errMsg });
     }
-    addEvent("facebook", `Ad Campaign Status: ${status}`, `Campaign ${campaignId} set to ${status}`, "sync");
+    addEvent("facebook", `Ad Campaign Status: ${status}`, `Campaign ${campaignId} set to ${status}`, "sync", storeId);
     return res.json({ success: true, status, ...data });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.delete("/facebook/ads/campaigns/:id", async (req, res) => {
+router.delete("/facebook/ads/campaigns/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const campaignId = req.params.id as string;
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!token) return res.status(400).json({ error: "Missing Page Access Token for Meta Ads." });
 
@@ -2032,17 +2074,18 @@ router.delete("/facebook/ads/campaigns/:id", async (req, res) => {
       const errMsg = (data["error"] as Record<string, string>)?.message ?? `HTTP ${r.status}`;
       return res.status(400).json({ error: errMsg });
     }
-    addEvent("facebook", `Ad Campaign Deleted`, `Campaign ${campaignId} deleted from Meta Ads`, "sync");
+    addEvent("facebook", `Ad Campaign Deleted`, `Campaign ${campaignId} deleted from Meta Ads`, "sync", storeId);
     return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.get("/facebook/ads/campaigns/:id/insights", async (req, res) => {
+router.get("/facebook/ads/campaigns/:id/insights", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const campaignId = req.params.id as string;
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const token =
     adsCreds["page_access_token"] ||
     adsCreds["access_token"] ||
@@ -2072,9 +2115,10 @@ router.get("/facebook/ads/campaigns/:id/insights", async (req, res) => {
 
 // ── Ad Sets ──────────────────────────────────────────────────────────────────
 
-router.get("/facebook/ads/adsets", async (req, res) => {
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+router.get("/facebook/ads/adsets", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const adAccountId = adsCreds["ad_account_id"] || fbCreds["ad_account_id"];
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!adAccountId || !token) return res.status(400).json({ error: "Missing ad account credentials." });
@@ -2097,7 +2141,8 @@ router.get("/facebook/ads/adsets", async (req, res) => {
   }
 });
 
-router.post("/facebook/ads/adsets", async (req, res) => {
+router.post("/facebook/ads/adsets", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { name, campaignId, dailyBudget, billingEvent = "IMPRESSIONS", optimizationGoal = "LINK_CLICKS", status = "PAUSED", countries = ["US", "GB", "FR", "DE"] } = req.body as {
     name: string;
     campaignId: string;
@@ -2112,8 +2157,8 @@ router.post("/facebook/ads/adsets", async (req, res) => {
     return res.status(400).json({ error: "Ad Set name and campaignId are required." });
   }
 
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const adAccountId = adsCreds["ad_account_id"] || fbCreds["ad_account_id"];
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!adAccountId || !token) return res.status(400).json({ error: "Missing ad account credentials." });
@@ -2149,21 +2194,22 @@ router.post("/facebook/ads/adsets", async (req, res) => {
       const errMsg = (data["error"] as Record<string, string>)?.message ?? `HTTP ${r.status}`;
       return res.status(400).json({ error: errMsg });
     }
-    addEvent("facebook", `Ad Set Created: ${name}`, `Ad Set ID: ${String(data["id"])}`, "sync");
+    addEvent("facebook", `Ad Set Created: ${name}`, `Ad Set ID: ${String(data["id"])}`, "sync", storeId);
     return res.status(201).json(data);
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.patch("/facebook/ads/adsets/:id/status", async (req, res) => {
+router.patch("/facebook/ads/adsets/:id/status", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const adSetId = req.params.id as string;
   const { status } = req.body as { status: "ACTIVE" | "PAUSED" | "ARCHIVED" };
 
   if (!status) return res.status(400).json({ error: "Status is required." });
 
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!token) return res.status(400).json({ error: "Missing Page Access Token for Meta Ads." });
 
@@ -2187,9 +2233,10 @@ router.patch("/facebook/ads/adsets/:id/status", async (req, res) => {
 
 // ── Ads & Creatives ──────────────────────────────────────────────────────────
 
-router.get("/facebook/ads/ads", async (req, res) => {
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+router.get("/facebook/ads/ads", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const adAccountId = adsCreds["ad_account_id"] || fbCreds["ad_account_id"];
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!adAccountId || !token) return res.status(400).json({ error: "Missing ad account credentials." });
@@ -2213,7 +2260,8 @@ router.get("/facebook/ads/ads", async (req, res) => {
   }
 });
 
-router.post("/facebook/ads/ads", async (req, res) => {
+router.post("/facebook/ads/ads", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { name, adsetId, title, body: adBody, imageUrl, linkUrl, status = "PAUSED" } = req.body as {
     name: string;
     adsetId: string;
@@ -2228,8 +2276,8 @@ router.post("/facebook/ads/ads", async (req, res) => {
     return res.status(400).json({ error: "Ad name, adsetId, and title are required." });
   }
 
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const adAccountId = adsCreds["ad_account_id"] || fbCreds["ad_account_id"];
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!adAccountId || !token) return res.status(400).json({ error: "Missing ad account credentials." });
@@ -2290,21 +2338,22 @@ router.post("/facebook/ads/ads", async (req, res) => {
       return res.status(400).json({ error: errMsg });
     }
 
-    addEvent("facebook", `Ad Created: ${name}`, `Ad ID: ${String(adData.id)}`, "sync");
+    addEvent("facebook", `Ad Created: ${name}`, `Ad ID: ${String(adData.id)}`, "sync", storeId);
     return res.status(201).json({ success: true, adId: adData.id, creativeId });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.patch("/facebook/ads/ads/:id/status", async (req, res) => {
+router.patch("/facebook/ads/ads/:id/status", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const adId = req.params.id as string;
   const { status } = req.body as { status: "ACTIVE" | "PAUSED" | "ARCHIVED" };
 
   if (!status) return res.status(400).json({ error: "Status is required." });
 
-  const adsCreds = await getChannelCredentials("ads");
-  const fbCreds = await getFbCreds();
+  const adsCreds = await getChannelCredentials("ads", storeId);
+  const fbCreds = await getFbCreds(storeId);
   const token = adsCreds["page_access_token"] || fbCreds["page_access_token"];
   if (!token) return res.status(400).json({ error: "Missing Page Access Token for Meta Ads." });
 
@@ -2328,11 +2377,12 @@ router.patch("/facebook/ads/ads/:id/status", async (req, res) => {
 
 export default router;
 
-router.post("/facebook/catalog/products/bulk", async (req, res) => {
+router.post("/facebook/catalog/products/bulk", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { ids, action, updates } = req.body as { ids: string[]; action: "DELETE" | "UPDATE", updates?: any };
   if (!ids || ids.length === 0) return res.status(400).json({ error: "No IDs provided" });
   
-  const { catalogId, token } = await getCommerceMetaCreds();
+  const { catalogId, token } = await getCommerceMetaCreds(storeId);
   if (!catalogId || !token) return res.status(400).json({ error: "Missing Commerce credentials" });
 
   try {
@@ -2342,11 +2392,11 @@ router.post("/facebook/catalog/products/bulk", async (req, res) => {
         ids.map(async (id) => {
           const r = await fetch(`https://graph.facebook.com/v21.0/${id}?access_token=${token}`, { method: "DELETE" });
           if (r.ok) {
-            await db.delete(productsTable).where(eq(productsTable.id, id)).catch(() => {});
+            await db.delete(productsTable).where(and(eq(productsTable.id, id), eq(productsTable.storeId, storeId))).catch(() => {});
           }
         })
       );
-      addEvent("commerce", "Meta Bulk Delete", `Deleted ${ids.length} products`, "sync");
+      addEvent("commerce", "Meta Bulk Delete", `Deleted ${ids.length} products`, "sync", storeId);
       return res.json({ success: true });
     } else if (action === "UPDATE" && updates) {
       // Use items_batch because we need to update multiple
@@ -2366,7 +2416,7 @@ router.post("/facebook/catalog/products/bulk", async (req, res) => {
           });
         })
       );
-      addEvent("commerce", "Meta Bulk Update", `Updated ${ids.length} products`, "sync");
+      addEvent("commerce", "Meta Bulk Update", `Updated ${ids.length} products`, "sync", storeId);
       return res.json({ success: true });
     }
     

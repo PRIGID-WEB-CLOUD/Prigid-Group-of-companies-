@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { SiMeta } from "react-icons/si";
+import { MdKey } from "react-icons/md";
 import AdminLayout from "./AdminLayout";
 import WhatsAppTemplatePreviewModal, { WhatsAppPhoneFrame } from "../../components/WhatsAppTemplatePreview";
 import { PREBUILT_WHATSAPP_TEMPLATES, PrebuiltTemplateBlueprint } from "../../data/prebuiltTemplates";
@@ -539,54 +540,22 @@ export default function AdminWhatsAppPage() {
                       </Link>
                     </div>
                   )}
-                  <div className="space-y-4">
-                    {WA_CRED_FIELDS.map((field) => {
-                      const val = credsDirty[field.key] ?? "";
-                      const saved = waCreds[field.key] ?? "";
-                      const isDirty = val !== saved;
-                      const visible = showSecret[field.key];
-                      return (
-                        <div key={field.key} className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <label className="font-[Manrope] font-bold text-[11px] tracking-widest uppercase text-[#45464d]">{field.label}</label>
-                            <div className="flex items-center gap-2">
-                              {isDirty && val !== "" && <span className="text-[9px] font-[Manrope] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Unsaved</span>}
-                              {!isDirty && saved && <span className="text-[9px] font-[Manrope] font-bold uppercase tracking-widest text-[#006c49] bg-[#f0faf6] px-2 py-0.5 rounded-full flex items-center gap-1"><span className="material-symbols-outlined text-[10px]">check_circle</span>Saved</span>}
-                            </div>
-                          </div>
-                          <div className="relative flex items-center">
-                            <input
-                              type={field.isSecret && !visible ? "password" : "text"}
-                              value={val}
-                              onChange={(e) => setCredsDirty((p) => ({ ...p, [field.key]: e.target.value }))}
-                              placeholder={field.isSecret ? "••••••••••••••••" : `Enter ${field.label}…`}
-                              className={`w-full bg-slate-50 border rounded-lg px-4 py-2.5 font-mono text-sm outline-none transition-colors pr-20 ${isDirty && val !== "" ? "border-amber-300 focus:border-amber-500" : "border-slate-100 focus:border-[#006c49]"}`}
-                            />
-                            <div className="absolute right-2 flex items-center gap-1">
-                              {field.isSecret && (
-                                <button onClick={() => setShowSecret((p) => ({ ...p, [field.key]: !p[field.key] }))} className="p-1 text-slate-400 hover:text-black transition-colors">
-                                  <span className="material-symbols-outlined text-sm">{visible ? "visibility_off" : "visibility"}</span>
-                                </button>
-                              )}
-                              {val && (
-                                <button onClick={() => { navigator.clipboard.writeText(val).catch(() => {}); showToast(`${field.label} copied.`); }} className="p-1 text-slate-400 hover:text-[#006c49] transition-colors">
-                                  <span className="material-symbols-outlined text-sm">content_copy</span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-[11px] text-[#7c839b] font-[Manrope] italic">{field.hint}</p>
-                        </div>
-                      );
-                    })}
+                  <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex items-center gap-3 mb-4">
+                      <MdKey className="text-2xl text-slate-400" />
+                      <div>
+                        <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                        <p className="text-xs font-[Manrope] text-slate-500 mt-1">Manual entry of WhatsApp API credentials is disabled in this environment.</p>
+                      </div>
+                    </div>
+                    <ul className="space-y-2 text-xs font-[Manrope] text-slate-600 list-disc list-inside">
+                      {WA_CRED_FIELDS.map(f => (
+                        <li key={f.key}><span className="font-bold text-slate-800">{f.label}</span></li>
+                      ))}
+                    </ul>
                   </div>
 
                   <div className="flex gap-3 pt-1">
-                    <button onClick={saveWaCreds} disabled={credsSaving}
-                      className="flex-1 py-3 bg-black text-white font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-[#006c49] disabled:opacity-60 transition-colors rounded-lg flex items-center justify-center gap-2">
-                      <span className={`material-symbols-outlined text-sm ${credsSaving ? "animate-spin" : ""}`}>{credsSaving ? "refresh" : "save"}</span>
-                      {credsSaving ? "Saving…" : "Save Credentials"}
-                    </button>
                     <button onClick={testWaConn} disabled={testingConn}
                       className="px-6 py-3 border border-slate-200 font-[Manrope] font-bold text-xs tracking-widest uppercase hover:border-[#006c49] hover:text-[#006c49] disabled:opacity-60 transition-colors rounded-lg flex items-center gap-2">
                       <span className={`material-symbols-outlined text-sm ${testingConn ? "animate-spin" : ""}`}>{testingConn ? "refresh" : "wifi_tethering"}</span>

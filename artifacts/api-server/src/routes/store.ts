@@ -4,7 +4,7 @@ import {
   db, productsTable, categoriesTable, ordersTable, productVariantsTable,
   mediaItemsTable, blogPostsTable, couponsTable, usersTable, teamMembersTable,
   paymentTransactionsTable, orderItemsTable, appSettingsTable, providerPluginsTable,
-  messagesTable, showroomLocationsTable,
+  messagesTable, showroomLocationsTable, storesTable,
   type AddressSnapshot, type OrderItem,
 } from "@workspace/db";
 import { and, eq, ne, desc, sql, like, gte, gt, isNull, lt, or, inArray } from "drizzle-orm";
@@ -23,30 +23,127 @@ import {
   buildWhatsAppOrderConfirmationMessage,
   buildWhatsAppOrderStatusUpdateMessage,
 } from "../services/whatsappService";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 const CART_COOKIE = "luxe_cart";
 
-router.get("/store/branding", async (_req, res) => {
+const BOUTIQUE_METADATA: Record<string, {
+  name: string;
+  short_name: string;
+  tagline: string;
+  primary_color: string;
+  bg_color: string;
+  typography: string;
+  hero_headline: string;
+  hero_subheadline: string;
+  hero_image: string;
+  valet: string;
+  hospitality: string;
+  currency: string;
+}> = {
+  "maison-moretti": {
+    name: "Maison Moretti Milano",
+    short_name: "MORETTI",
+    tagline: "Florentine Bespoke Leathercraft & Footwear",
+    primary_color: "#854d0e",
+    bg_color: "#18181b",
+    typography: "'Playfair Display', Georgia, serif",
+    hero_headline: "Hand-Burnished <br /><span class=\"italic font-light\">Florentine Leather</span>",
+    hero_subheadline: "Master craftsmen hand-stitching Louisiana alligator, Tuscan calfskin, and bespoke weekender luggage in Milan.",
+    hero_image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=2012&auto=format&fit=crop",
+    valet: "Chauffeured arrival service at Via Montenapoleone salon entrance.",
+    hospitality: "Bespoke leather monogramming and espresso bar upon your arrival.",
+    currency: "EUR",
+  },
+  "aurelia-jewels": {
+    name: "Aurelia Haute Joaillerie",
+    short_name: "AURELIA",
+    tagline: "High Jewelry, Rare Diamonds & Solitaires",
+    primary_color: "#b45309",
+    bg_color: "#0f172a",
+    typography: "'Cinzel', 'Playfair Display', serif",
+    hero_headline: "Brilliance in <br /><span class=\"italic font-light\">Pure Platinum & Gold</span>",
+    hero_subheadline: "Ethically sourced certified diamonds, untreated Ceylon sapphires, and bespoke heirloom commissions.",
+    hero_image: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?q=80&w=2070&auto=format&fit=crop",
+    valet: "Discreet subterranean security entrance and armored courier dispatch.",
+    hospitality: "Private gemological viewing vault with dedicated master jeweler consultation.",
+    currency: "USD",
+  },
+  "kurogane": {
+    name: "Kurogane Horology",
+    short_name: "KUROGANE",
+    tagline: "Precision Haute Horlogerie & Complications",
+    primary_color: "#0284c7",
+    bg_color: "#090d16",
+    typography: "'Manrope', 'Inter', sans-serif",
+    hero_headline: "The Art of <br /><span class=\"italic font-light\">Micro-Mechanical Mastery</span>",
+    hero_subheadline: "Handcrafted complications, skeleton tourbillons, and titanium cases engineered to one-tenth of a micron in Tokyo.",
+    hero_image: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=2087&auto=format&fit=crop",
+    valet: "Private Ginza penthouse reception and executive transfer service.",
+    hospitality: "Master watchmaker bench preview and ceremonial matcha service.",
+    currency: "USD",
+  },
+  "atelier-celeste": {
+    name: "Atelier Céleste",
+    short_name: "CÉLESTE",
+    tagline: "Haute Couture, Silk Eveningwear & Tailoring",
+    primary_color: "#4338ca",
+    bg_color: "#09090b",
+    typography: "'Noto Serif', 'Georgia', serif",
+    hero_headline: "Silk Georgette & <br /><span class=\"italic font-light\">Bespoke Silhouettes</span>",
+    hero_subheadline: "Made-to-measure evening gowns, double-breasted tuxedo suiting, and pure Grade-A Mongolian cashmere.",
+    hero_image: "https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=2076&auto=format&fit=crop",
+    valet: "Complimentary private concierge and valet available at Mayfair Atelier entrance.",
+    hospitality: "Private salon fittings and vintage champagne service upon arrival.",
+    currency: "GBP",
+  },
+  "luxe-boutique": {
+    name: "Luxe Boutique Ateliers",
+    short_name: "LUXE",
+    tagline: "Flagship Luxury Fashion, Objects & Decor",
+    primary_color: "#006c49",
+    bg_color: "#0f172a",
+    typography: "'Playfair Display', Georgia, serif",
+    hero_headline: "Architectural <br /><span class=\"italic font-light\">Elegance</span>",
+    hero_subheadline: "Discover our latest release: A study in precision tailoring, fine leathercraft, and sculptural decor.",
+    hero_image: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=2070&auto=format&fit=crop",
+    valet: "Complimentary valet parking is available at the main entrance.",
+    hospitality: "Enjoy our signature champagne service upon your arrival.",
+    currency: "USD",
+  },
+};
+
+router.get("/store/branding", async (req: TenantRequest, res: Response) => {
   try {
-    const keys = [
-      "store_name", "store_email", "store_currency", "store_timezone",
-      "brand_primary_color", "brand_bg_color", "brand_logo_url",
-      "brand_typography", "brand_valet_instructions", "brand_hospitality_notes"
-    ];
-    const rows = await db.select().from(appSettingsTable).where(inArray(appSettingsTable.key, keys));
-    const branding = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const store = req.store;
+    if (!store) return res.status(404).json({ error: "Store not found" });
+
+    const user = await getSessionUser(req, store.id).catch(() => null);
+    const isAdmin = user && (user.role === "ADMIN" || user.role === "SUPER_ADMIN");
+
+    const meta = BOUTIQUE_METADATA[store.slug] || BOUTIQUE_METADATA["luxe-boutique"];
+
     return res.json({
-      store_name: branding.store_name || "LUXE Boutique",
-      store_email: branding.store_email || "",
-      store_currency: branding.store_currency || "USD",
-      store_timezone: branding.store_timezone || "UTC",
-      brand_primary_color: branding.brand_primary_color || "#006c49",
-      brand_bg_color: branding.brand_bg_color || "#0f172a",
-      brand_logo_url: branding.brand_logo_url || "",
-      brand_typography: branding.brand_typography || "Georgia, serif",
-      brand_valet_instructions: branding.brand_valet_instructions || "Complimentary valet parking is available at the main entrance.",
-      brand_hospitality_notes: branding.brand_hospitality_notes || "Enjoy our signature champagne service upon your arrival.",
+      store_id: store.id,
+      store_slug: store.slug,
+      store_name: store.name || meta.name,
+      brand_logo_text: meta.short_name,
+      brand_tagline: meta.tagline,
+      store_email: "",
+      store_currency: store.currency || meta.currency || "USD",
+      store_timezone: "UTC",
+      isPublished: store.publishStatus === "PUBLISHED" || store.isPublished === true,
+      isAdmin: Boolean(isAdmin),
+      brand_primary_color: meta.primary_color,
+      brand_bg_color: meta.bg_color,
+      brand_logo_url: "",
+      brand_typography: meta.typography,
+      brand_hero_headline: meta.hero_headline,
+      brand_hero_subheadline: meta.hero_subheadline,
+      brand_hero_image: meta.hero_image,
+      brand_valet_instructions: meta.valet,
+      brand_hospitality_notes: meta.hospitality,
     });
   } catch (error) {
     console.error("[Branding Error]", error);
@@ -71,9 +168,9 @@ async function checkoutSessionId(req: Request, res: Response) {
 
 // ── Products ──────────────────────────────────────────────────────────────────
 
-async function enrichProduct(p: typeof productsTable.$inferSelect) {
+async function enrichProduct(p: typeof productsTable.$inferSelect, storeId: string) {
   const cat = p.categoryId
-    ? (await db.select().from(categoriesTable).where(eq(categoriesTable.id, p.categoryId)).limit(1))[0]
+    ? (await db.select().from(categoriesTable).where(and(eq(categoriesTable.id, p.categoryId), eq(categoriesTable.storeId, storeId))).limit(1))[0]
     : null;
   const variants = await db.select().from(productVariantsTable)
     .where(eq(productVariantsTable.productId, p.id));
@@ -169,44 +266,57 @@ const variantSchema = z.object({
   eproloVariantId: z.string().trim().max(200).nullable().optional(),
 });
 
-router.get("/products", async (_req, res) => {
-  const user = await getSessionUser(_req);
+router.get("/products", async (req: TenantRequest, res: Response) => {
+  const user = await getSessionUser(req);
   const canManage = user && (user.role === "ADMIN" || user.role === "SUPER_ADMIN");
+  const storeId = req.storeId!;
+
   const prods = await db.select().from(productsTable)
-    .where(canManage ? undefined : ne(productsTable.status, "ARCHIVED"))
+    .where(and(
+      eq(productsTable.storeId, storeId),
+      canManage ? undefined : ne(productsTable.status, "ARCHIVED")
+    ))
     .orderBy(desc(productsTable.createdAt));
-  const enriched = await Promise.all(prods.map(enrichProduct));
+  const enriched = await Promise.all(prods.map(p => enrichProduct(p, storeId)));
   res.json(enriched);
 });
 
-router.post("/products", requireAdmin, validate(productSchema), async (req, res) => {
+router.post("/products", requireAdmin, validate(productSchema), async (req: TenantRequest, res: Response) => {
   const body = req.body as z.infer<typeof productSchema>;
   const allowed = ["name", "price", "categoryId", "stock", "trackQuantity", "status", "imageUrl", "description", "tags", "metaSyncEnabled", "eproloProductId"];
-  const insertData: Record<string, unknown> = { id: randomUUID() };
+  const insertData: Record<string, unknown> = { 
+    id: randomUUID(),
+    storeId: req.storeId!,
+  };
   for (const k of allowed) {
     if (k in body && (body as Record<string, unknown>)[k] !== undefined) {
       insertData[k] = (body as Record<string, unknown>)[k];
     }
   }
   const [p] = await db.insert(productsTable).values(insertData as typeof productsTable.$inferInsert).returning();
-  checkAndEmitLowStock().catch(() => {});
-  return res.status(201).json(await enrichProduct(p));
+  checkAndEmitLowStock(req.storeId!).catch(() => {});
+  return res.status(201).json(await enrichProduct(p, req.storeId!));
 });
 
-router.get("/products/:id", async (req, res) => {
+router.get("/products/:id", async (req: TenantRequest, res: Response) => {
   const productId = req.params.id as string;
   const user = await getSessionUser(req);
   const canManage = user && (user.role === "ADMIN" || user.role === "SUPER_ADMIN");
+  const storeId = req.storeId!;
+
   const rows = await db.select().from(productsTable).where(and(
     eq(productsTable.id, productId),
+    eq(productsTable.storeId, storeId),
     ...(canManage ? [] : [ne(productsTable.status, "ARCHIVED")]),
   )).limit(1);
   if (!rows[0]) return res.status(404).json({ error: "Product not found" });
-  return res.json(await enrichProduct(rows[0]));
+  return res.json(await enrichProduct(rows[0], storeId));
 });
 
-router.put("/products/:id", requireAdmin, async (req, res) => {
+router.put("/products/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   const productId = req.params.id as string;
+  const storeId = req.storeId!;
+  
   const parsed = productSchema.partial().safeParse(req.body);
   if (!parsed.success) {
     const issueDetails = parsed.error.issues.map(i => `${i.path.join(".") || "field"}: ${i.message}`).join(", ");
@@ -219,16 +329,20 @@ router.put("/products/:id", requireAdmin, async (req, res) => {
       updates[k] = (parsed.data as Record<string, unknown>)[k];
     }
   }
-  const rows = await db.update(productsTable).set(updates).where(eq(productsTable.id, productId)).returning();
+  const rows = await db.update(productsTable)
+    .set(updates)
+    .where(and(eq(productsTable.id, productId), eq(productsTable.storeId, storeId)))
+    .returning();
   if (!rows[0]) return res.status(404).json({ error: "Product not found" });
-  checkAndEmitLowStock().catch(() => {});
-  return res.json(await enrichProduct(rows[0]));
+  checkAndEmitLowStock(storeId).catch(() => {});
+  return res.json(await enrichProduct(rows[0], storeId));
 });
 
-router.delete("/products/:id", requireAdmin, async (req, res) => {
+router.delete("/products/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   const productId = req.params.id as string;
-  await db.delete(productsTable).where(eq(productsTable.id, productId));
-  checkAndEmitLowStock().catch(() => {});
+  const storeId = req.storeId!;
+  await db.delete(productsTable).where(and(eq(productsTable.id, productId), eq(productsTable.storeId, storeId)));
+  checkAndEmitLowStock(storeId).catch(() => {});
   return res.json({ ok: true });
 });
 
@@ -248,34 +362,37 @@ router.post("/products/:id/sync", requireAdmin, async (req, res) => {
 // ── Product Variants ──────────────────────────────────────────────────────────
 
 // Helper to keep parent product stock synchronized with variant totals & check low stock
-async function syncVariantStockToProduct(productId: string) {
+async function syncVariantStockToProduct(productId: string, storeId: string) {
   try {
-    const variants = await db.select().from(productVariantsTable).where(eq(productVariantsTable.productId, productId));
+    const variants = await db.select().from(productVariantsTable).where(and(eq(productVariantsTable.productId, productId), eq(productVariantsTable.storeId, storeId)));
     if (variants.length > 0) {
       const totalStock = variants.reduce((acc, v) => acc + (v.stock ?? 0), 0);
-      await db.update(productsTable).set({ stock: totalStock }).where(eq(productsTable.id, productId));
+      await db.update(productsTable).set({ stock: totalStock }).where(and(eq(productsTable.id, productId), eq(productsTable.storeId, storeId)));
     }
-    await checkAndEmitLowStock();
+    await checkAndEmitLowStock(storeId);
   } catch (err) {
     console.error("Failed to sync variant stock:", err);
   }
 }
 
-router.get("/products/:id/variants", async (req, res) => {
+router.get("/products/:id/variants", async (req: TenantRequest, res) => {
   const productId = req.params.id as string;
-  const rows = await db.select().from(productsTable).where(eq(productsTable.id, productId)).limit(1);
+  const storeId = req.storeId!;
+  const rows = await db.select().from(productsTable).where(and(eq(productsTable.id, productId), eq(productsTable.storeId, storeId))).limit(1);
   if (!rows[0]) return res.status(404).json({ error: "Product not found" });
-  return res.json(await db.select().from(productVariantsTable).where(eq(productVariantsTable.productId, productId)));
+  return res.json(await db.select().from(productVariantsTable).where(and(eq(productVariantsTable.productId, productId), eq(productVariantsTable.storeId, storeId))));
 });
 
-router.post("/products/:id/variants", requireAdmin, async (req, res) => {
+router.post("/products/:id/variants", requireAdmin, async (req: TenantRequest, res) => {
   const productId = req.params.id as string;
-  const rows = await db.select().from(productsTable).where(eq(productsTable.id, productId)).limit(1);
+  const storeId = req.storeId!;
+  const rows = await db.select().from(productsTable).where(and(eq(productsTable.id, productId), eq(productsTable.storeId, storeId))).limit(1);
   if (!rows[0]) return res.status(404).json({ error: "Product not found" });
   const parsed = variantSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid variant fields.", details: parsed.error.flatten() });
   const [variant] = await db.insert(productVariantsTable).values({
     id: randomUUID(),
+    storeId,
     productId,
     size: parsed.data.size ?? "",
     color: parsed.data.color ?? "",
@@ -286,34 +403,37 @@ router.post("/products/:id/variants", requireAdmin, async (req, res) => {
     eproloVariantId: parsed.data.eproloVariantId ?? null,
   }).returning();
 
-  syncVariantStockToProduct(productId).catch(() => {});
+  syncVariantStockToProduct(productId, storeId).catch(() => {});
   return res.status(201).json(variant);
 });
 
-router.put("/products/:id/variants/:variantId", requireAdmin, async (req, res) => {
+router.put("/products/:id/variants/:variantId", requireAdmin, async (req: TenantRequest, res) => {
   const productId = req.params.id as string;
   const variantId = req.params.variantId as string;
+  const storeId = req.storeId!;
   const parsed = variantSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid variant fields.", details: parsed.error.flatten() });
   const updates: Record<string, unknown> = parsed.data;
   const [updated] = await db.update(productVariantsTable)
     .set(updates)
-    .where(and(eq(productVariantsTable.id, variantId), eq(productVariantsTable.productId, productId)))
+    .where(and(eq(productVariantsTable.id, variantId), eq(productVariantsTable.productId, productId), eq(productVariantsTable.storeId, storeId)))
     .returning();
   if (!updated) return res.status(404).json({ error: "Variant not found" });
 
-  syncVariantStockToProduct(productId).catch(() => {});
+  syncVariantStockToProduct(productId, storeId).catch(() => {});
   return res.json(updated);
 });
 
-router.delete("/products/:id/variants/:variantId", requireAdmin, async (req, res) => {
+router.delete("/products/:id/variants/:variantId", requireAdmin, async (req: TenantRequest, res) => {
   const productId = req.params.id as string;
+  const storeId = req.storeId!;
   await db.delete(productVariantsTable).where(and(
     eq(productVariantsTable.id, req.params.variantId as string),
     eq(productVariantsTable.productId, productId),
+    eq(productVariantsTable.storeId, storeId)
   ));
 
-  syncVariantStockToProduct(productId).catch(() => {});
+  syncVariantStockToProduct(productId, storeId).catch(() => {});
   return res.json({ ok: true });
 });
 
@@ -324,9 +444,10 @@ const generateMatrixSchema = z.object({
   defaultStock: z.number().int().min(0).optional().default(10),
 });
 
-router.post("/products/:id/generate-variants", requireAdmin, async (req, res) => {
+router.post("/products/:id/generate-variants", requireAdmin, async (req: TenantRequest, res) => {
   const productId = req.params.id as string;
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId)).limit(1);
+  const storeId = req.storeId!;
+  const [product] = await db.select().from(productsTable).where(and(eq(productsTable.id, productId), eq(productsTable.storeId, storeId))).limit(1);
   if (!product) return res.status(404).json({ error: "Product not found" });
 
   const parsed = generateMatrixSchema.safeParse(req.body);
@@ -335,7 +456,7 @@ router.post("/products/:id/generate-variants", requireAdmin, async (req, res) =>
   const { sizes, colors, defaultPrice, defaultStock } = parsed.data;
 
   // Existing variants check to avoid duplicates
-  const existing = await db.select().from(productVariantsTable).where(eq(productVariantsTable.productId, productId));
+  const existing = await db.select().from(productVariantsTable).where(and(eq(productVariantsTable.productId, productId), eq(productVariantsTable.storeId, storeId)));
   const existingKeySet = new Set(existing.map(v => `${v.size.toLowerCase()}_${v.color.toLowerCase()}`));
 
   const newVariantsToInsert: Array<typeof productVariantsTable.$inferInsert> = [];
@@ -351,6 +472,7 @@ router.post("/products/:id/generate-variants", requireAdmin, async (req, res) =>
 
         newVariantsToInsert.push({
           id: randomUUID(),
+          storeId,
           productId,
           size,
           color,
@@ -366,9 +488,9 @@ router.post("/products/:id/generate-variants", requireAdmin, async (req, res) =>
     await db.insert(productVariantsTable).values(newVariantsToInsert);
   }
 
-  syncVariantStockToProduct(productId).catch(() => {});
+  syncVariantStockToProduct(productId, storeId).catch(() => {});
 
-  const allVariants = await db.select().from(productVariantsTable).where(eq(productVariantsTable.productId, productId));
+  const allVariants = await db.select().from(productVariantsTable).where(and(eq(productVariantsTable.productId, productId), eq(productVariantsTable.storeId, storeId)));
   return res.json({
     createdCount: newVariantsToInsert.length,
     variants: allVariants,
@@ -377,17 +499,22 @@ router.post("/products/:id/generate-variants", requireAdmin, async (req, res) =>
 
 // ── Orders ────────────────────────────────────────────────────────────────────
 
-router.get("/orders", requireAdmin, async (_req, res) => {
-  const rows = await db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt));
+router.get("/orders", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const rows = await db.select().from(ordersTable)
+    .where(eq(ordersTable.storeId, storeId))
+    .orderBy(desc(ordersTable.createdAt));
   return res.json(rows);
 });
 
-router.get("/admin/notifications/unread-count", requireAdmin, async (req, res) => {
+router.get("/admin/notifications/unread-count", requireAdmin, async (req: TenantRequest, res: Response) => {
   try {
+    const storeId = req.storeId!;
     const rows = await db.select({
       id: ordersTable.id,
       status: ordersTable.status,
-    }).from(ordersTable);
+    }).from(ordersTable)
+      .where(eq(ordersTable.storeId, storeId));
     
     const seenIdsQuery = (req.query.seenIds as string ?? "");
     const seenIdsSet = new Set(seenIdsQuery.split(",").filter(Boolean));
@@ -405,9 +532,12 @@ router.get("/admin/notifications/unread-count", requireAdmin, async (req, res) =
   }
 });
 
-router.get("/orders/:id", requireAdmin, async (req, res) => {
+router.get("/orders/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   const orderId = req.params.id as string;
-  const rows = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+  const storeId = req.storeId!;
+  const rows = await db.select().from(ordersTable)
+    .where(and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, storeId)))
+    .limit(1);
   if (!rows[0]) return res.status(404).json({ error: "Order not found" });
   return res.json(rows[0]);
 });
@@ -521,7 +651,7 @@ function paymentReference(data: Record<string, unknown>) {
 
 async function tryAutoForwardToEprolo(order: typeof ordersTable.$inferSelect) {
   if (order.paymentStatus !== "PAID") return;
-  const cfg = await getEproloConfig();
+  const cfg = await getEproloConfig(order.storeId);
   if (!cfg) return;
   const address = order.shippingAddress;
   if (!address || !address.name || !address.phone || !(address.address || address.line1) || !address.city ||
@@ -650,14 +780,14 @@ async function finalizePaidTransaction(reference: string, gatewayData: Record<st
     return created;
   });
 
-  eventBus.publish({ type: "new_order", payload: {
-    id: order.id, customerName: order.customerName, customerEmail: order.customerEmail,
+  eventBus.publish({ type: "new_order", storeId: order.storeId, payload: {
+    id: order.id, storeId: order.storeId, customerName: order.customerName, customerEmail: order.customerEmail,
     total: order.total, status: order.status, createdAt: order.createdAt.toISOString(),
   }});
   void tryAutoForwardToEprolo(order);
 
   // Dispatch order confirmation email & WhatsApp notification asynchronously
-  getStoreUrl().then((storeUrl) => {
+  getStoreUrl(order.storeId).then((storeUrl) => {
     const items = Array.isArray(order.items) ? order.items.map((i: any) => ({ name: i.name, qty: i.qty ?? i.quantity ?? 1, price: i.price ?? 0 })) : [];
     const emailData = buildOrderConfirmationEmail({
       orderId: order.id,
@@ -666,7 +796,7 @@ async function finalizePaidTransaction(reference: string, gatewayData: Record<st
       total: order.total,
       storeUrl,
     });
-    sendEmail({ to: order.customerEmail, ...emailData }).catch(() => {});
+    sendEmail({ to: order.customerEmail, ...emailData, storeId: order.storeId }).catch(() => {});
 
     const itemSummary = items.map((i) => `${i.name} (x${i.qty})`).join(", ");
     const waText = buildWhatsAppOrderConfirmationMessage({
@@ -676,7 +806,7 @@ async function finalizePaidTransaction(reference: string, gatewayData: Record<st
       itemSummary,
       orderUrl: `${storeUrl}/account/orders`,
     });
-    sendWhatsAppNotification(order.customerEmail, waText).catch(() => {});
+    sendWhatsAppNotification(order.customerEmail, waText, order.storeId).catch(() => {});
   }).catch(() => {});
 
   return order;
@@ -707,8 +837,9 @@ const updateOrderStatusSchema = z.object({
   id: z.string().optional(),
 });
 
-router.put("/orders/:id", requireAdmin, async (req, res) => {
+router.put("/orders/:id", requireAdmin, async (req: TenantRequest, res) => {
   const orderId = req.params.id as string;
+  const storeId = req.storeId!;
   const parsed = updateOrderStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid order status.", details: parsed.error.flatten() });
   const updates: Record<string, unknown> = {};
@@ -716,20 +847,20 @@ router.put("/orders/:id", requireAdmin, async (req, res) => {
   if (parsed.data.paymentStatus) updates.paymentStatus = parsed.data.paymentStatus;
   if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No valid fields to update." });
 
-  const rows = await db.update(ordersTable).set(updates).where(eq(ordersTable.id, orderId)).returning();
+  const rows = await db.update(ordersTable).set(updates).where(and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, storeId))).returning();
   if (!rows[0]) return res.status(404).json({ error: "Order not found" });
-  eventBus.publish({ type: "order_updated", payload: { id: rows[0].id, status: rows[0].status } });
+  eventBus.publish({ type: "order_updated", storeId, payload: { id: rows[0].id, storeId, status: rows[0].status } });
 
   if (parsed.data.status) {
     const updatedOrder = rows[0];
-    getStoreUrl().then((storeUrl) => {
+    getStoreUrl(storeId).then((storeUrl) => {
       const emailData = buildOrderStatusUpdateEmail({
         orderId: updatedOrder.id,
         customerName: updatedOrder.customerName,
         status: updatedOrder.status,
         storeUrl,
       });
-      sendEmail({ to: updatedOrder.customerEmail, ...emailData }).catch(() => {});
+      sendEmail({ to: updatedOrder.customerEmail, ...emailData, storeId }).catch(() => {});
 
       const waText = buildWhatsAppOrderStatusUpdateMessage({
         orderId: updatedOrder.id,
@@ -737,37 +868,38 @@ router.put("/orders/:id", requireAdmin, async (req, res) => {
         status: updatedOrder.status,
         orderUrl: `${storeUrl}/account/orders`,
       });
-      sendWhatsAppNotification(updatedOrder.customerEmail, waText).catch(() => {});
+      sendWhatsAppNotification(updatedOrder.customerEmail, waText, storeId).catch(() => {});
     }).catch(() => {});
   }
 
   return res.json(rows[0]);
 });
 
-router.put("/orders", requireAdmin, async (req, res) => {
+router.put("/orders", requireAdmin, async (req: TenantRequest, res) => {
   const parsed = updateOrderStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid order status.", details: parsed.error.flatten() });
   const orderId = parsed.data.orderId || parsed.data.id;
+  const storeId = req.storeId!;
   if (!orderId) return res.status(400).json({ error: "Order ID is required." });
   const updates: Record<string, unknown> = {};
   if (parsed.data.status) updates.status = parsed.data.status;
   if (parsed.data.paymentStatus) updates.paymentStatus = parsed.data.paymentStatus;
   if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No valid fields to update." });
 
-  const rows = await db.update(ordersTable).set(updates).where(eq(ordersTable.id, orderId)).returning();
+  const rows = await db.update(ordersTable).set(updates).where(and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, storeId))).returning();
   if (!rows[0]) return res.status(404).json({ error: "Order not found" });
-  eventBus.publish({ type: "order_updated", payload: { id: rows[0].id, status: rows[0].status } });
+  eventBus.publish({ type: "order_updated", storeId, payload: { id: rows[0].id, storeId, status: rows[0].status } });
 
   if (parsed.data.status) {
     const updatedOrder = rows[0];
-    getStoreUrl().then((storeUrl) => {
+    getStoreUrl(storeId).then((storeUrl) => {
       const emailData = buildOrderStatusUpdateEmail({
         orderId: updatedOrder.id,
         customerName: updatedOrder.customerName,
         status: updatedOrder.status,
         storeUrl,
       });
-      sendEmail({ to: updatedOrder.customerEmail, ...emailData }).catch(() => {});
+      sendEmail({ to: updatedOrder.customerEmail, ...emailData, storeId }).catch(() => {});
 
       const waText = buildWhatsAppOrderStatusUpdateMessage({
         orderId: updatedOrder.id,
@@ -775,7 +907,7 @@ router.put("/orders", requireAdmin, async (req, res) => {
         status: updatedOrder.status,
         orderUrl: `${storeUrl}/account/orders`,
       });
-      sendWhatsAppNotification(updatedOrder.customerEmail, waText).catch(() => {});
+      sendWhatsAppNotification(updatedOrder.customerEmail, waText, storeId).catch(() => {});
     }).catch(() => {});
   }
 
@@ -784,83 +916,120 @@ router.put("/orders", requireAdmin, async (req, res) => {
 
 // ── Categories ────────────────────────────────────────────────────────────────
 
-router.get("/categories", async (_req, res) => {
-  const rows = await db.select().from(categoriesTable).orderBy(categoriesTable.name);
+router.get("/categories", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const rows = await db.select().from(categoriesTable)
+    .where(eq(categoriesTable.storeId, storeId))
+    .orderBy(categoriesTable.name);
   const withCount = await Promise.all(rows.map(async (c) => {
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(productsTable).where(eq(productsTable.categoryId, c.id));
+    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(productsTable)
+      .where(and(eq(productsTable.categoryId, c.id), eq(productsTable.storeId, storeId)));
     return { ...c, productCount: count ?? 0 };
   }));
   return res.json(withCount);
 });
 
-router.post("/categories", requireAdmin, async (req, res) => {
+router.post("/categories", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { name, description } = req.body as { name: string; description: string };
   const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-  const [cat] = await db.insert(categoriesTable).values({ id: randomUUID(), name, slug, description: description ?? "" }).returning();
+  const [cat] = await db.insert(categoriesTable).values({ 
+    id: randomUUID(), 
+    storeId,
+    name, 
+    slug, 
+    description: description ?? "" 
+  }).returning();
   return res.status(201).json({ ...cat, productCount: 0 });
 });
 
-router.put("/categories/:id", requireAdmin, async (req, res) => {
+router.put("/categories/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   const categoryId = req.params.id as string;
+  const storeId = req.storeId!;
   const allowed = ["name", "description"];
   const updates: Record<string, unknown> = {};
   for (const k of allowed) if (k in req.body) updates[k] = req.body[k];
   if (req.body.name) updates["slug"] = String(req.body.name).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-  const rows = await db.update(categoriesTable).set(updates).where(eq(categoriesTable.id, categoryId)).returning();
+  const rows = await db.update(categoriesTable)
+    .set(updates)
+    .where(and(eq(categoriesTable.id, categoryId), eq(categoriesTable.storeId, storeId)))
+    .returning();
   if (!rows[0]) return res.status(404).json({ error: "Category not found" });
   return res.json(rows[0]);
 });
 
-router.delete("/categories/:id", requireAdmin, async (req, res) => {
+router.delete("/categories/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   const categoryId = req.params.id as string;
-  await db.delete(categoriesTable).where(eq(categoriesTable.id, categoryId));
+  const storeId = req.storeId!;
+  await db.delete(categoriesTable).where(and(eq(categoriesTable.id, categoryId), eq(categoriesTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
 // ── Blog Posts ────────────────────────────────────────────────────────────────
 
-router.get("/posts", async (_req, res) => {
-  return res.json(await db.select().from(blogPostsTable).orderBy(desc(blogPostsTable.createdAt)));
+router.get("/posts", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(blogPostsTable)
+    .where(eq(blogPostsTable.storeId, storeId))
+    .orderBy(desc(blogPostsTable.createdAt)));
 });
 
-router.post("/posts", requireAdmin, async (req, res) => {
+router.post("/posts", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { title, content, status, authorName } = req.body as { title?: string; content?: string; status?: string; authorName?: string };
   const slug = (title ?? "post").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
   const [post] = await db.insert(blogPostsTable).values({
-    id: randomUUID(), title: title ?? "", slug, content: content ?? "",
-    status: status ?? "DRAFT", authorName: authorName ?? "Admin",
+    id: randomUUID(), 
+    storeId,
+    title: title ?? "", 
+    slug, 
+    content: content ?? "",
+    status: status ?? "DRAFT", 
+    authorName: authorName ?? "Admin",
     publishedAt: status === "PUBLISHED" ? new Date() : null,
   }).returning();
   return res.status(201).json(post);
 });
 
-router.get("/posts/:id", async (req, res) => {
-  const [p] = await db.select().from(blogPostsTable).where(eq(blogPostsTable.id, req.params.id as string)).limit(1);
+router.get("/posts/:id", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const [p] = await db.select().from(blogPostsTable)
+    .where(and(eq(blogPostsTable.id, req.params.id as string), eq(blogPostsTable.storeId, storeId)))
+    .limit(1);
   if (!p) return res.status(404).json({ error: "Post not found" });
   return res.json(p);
 });
 
-router.put("/posts/:id", requireAdmin, async (req, res) => {
+router.put("/posts/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   for (const key of ["title", "content", "status", "authorName"]) {
     if (key in req.body) updates[key] = req.body[key];
   }
   if (req.body.title) updates.slug = String(req.body.title).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
   if (req.body.status === "PUBLISHED") updates.publishedAt = new Date();
-  const [updated] = await db.update(blogPostsTable).set(updates).where(eq(blogPostsTable.id, req.params.id as string)).returning();
+  const [updated] = await db.update(blogPostsTable)
+    .set(updates)
+    .where(and(eq(blogPostsTable.id, req.params.id as string), eq(blogPostsTable.storeId, storeId)))
+    .returning();
   if (!updated) return res.status(404).json({ error: "Post not found" });
   return res.json(updated);
 });
 
-router.delete("/posts/:id", requireAdmin, async (req, res) => {
-  await db.delete(blogPostsTable).where(eq(blogPostsTable.id, req.params.id as string));
+router.delete("/posts/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  await db.delete(blogPostsTable).where(and(eq(blogPostsTable.id, req.params.id as string), eq(blogPostsTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
 // ── Media ─────────────────────────────────────────────────────────────────────
 
-router.get("/media", requireAdmin, async (_req, res) => {
-  const items = await db.select().from(mediaItemsTable).orderBy(desc(mediaItemsTable.createdAt));
+router.get("/media", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const items = await db.select().from(mediaItemsTable)
+    .where(eq(mediaItemsTable.storeId, storeId))
+    .orderBy(desc(mediaItemsTable.createdAt));
   const assets = items.map((i) => ({
     id: i.id,
     publicId: i.id,
@@ -881,36 +1050,44 @@ router.get("/media", requireAdmin, async (_req, res) => {
   });
 });
 
-router.delete("/media/:id", requireAdmin, async (req, res) => {
-  await db.delete(mediaItemsTable).where(eq(mediaItemsTable.id, req.params.id as string));
+router.delete("/media/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  await db.delete(mediaItemsTable).where(and(eq(mediaItemsTable.id, req.params.id as string), eq(mediaItemsTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
 // ── Users / Customers ─────────────────────────────────────────────────────────
 
-router.get("/users", requireAdmin, async (_req, res) => {
+router.get("/users", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const customers = await db.select()
     .from(usersTable)
-    .where(and(ne(usersTable.role, "ADMIN"), ne(usersTable.role, "SUPER_ADMIN")))
+    .where(and(
+      eq(usersTable.storeId, storeId),
+      ne(usersTable.role, "ADMIN"), 
+      ne(usersTable.role, "SUPER_ADMIN")
+    ))
     .orderBy(desc(usersTable.createdAt));
   return res.json(customers);
 });
 
-router.delete("/users/bulk", requireAdmin, async (req, res) => {
+router.delete("/users/bulk", requireAdmin, async (req: TenantRequest, res: Response) => {
   const { ids } = req.body as { ids?: string[] };
+  const storeId = req.storeId!;
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: "No user IDs provided" });
   }
   try {
-    await db.delete(usersTable).where(inArray(usersTable.id, ids));
+    await db.delete(usersTable).where(and(inArray(usersTable.id, ids), eq(usersTable.storeId, storeId)));
     return res.json({ success: true, message: `Deleted ${ids.length} users` });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.put("/users/bulk", requireAdmin, async (req, res) => {
+router.put("/users/bulk", requireAdmin, async (req: TenantRequest, res: Response) => {
   const { ids, role } = req.body as { ids?: string[], role?: string };
+  const storeId = req.storeId!;
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: "No user IDs provided" });
   }
@@ -918,17 +1095,20 @@ router.put("/users/bulk", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "No role provided to update" });
   }
   try {
-    await db.update(usersTable).set({ role }).where(inArray(usersTable.id, ids));
+    await db.update(usersTable)
+      .set({ role })
+      .where(and(inArray(usersTable.id, ids), eq(usersTable.storeId, storeId)));
     return res.json({ success: true, message: `Updated ${ids.length} users` });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.delete("/users/:id", requireAdmin, async (req, res) => {
+router.delete("/users/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   const userId = req.params.id as string;
+  const storeId = req.storeId!;
   try {
-    await db.delete(usersTable).where(eq(usersTable.id, userId));
+    await db.delete(usersTable).where(and(eq(usersTable.id, userId), eq(usersTable.storeId, storeId)));
     return res.json({ success: true, message: "User deleted" });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
@@ -937,13 +1117,18 @@ router.delete("/users/:id", requireAdmin, async (req, res) => {
 
 // ── Coupons ───────────────────────────────────────────────────────────────────
 
-router.get("/coupons", requireAdmin, async (_req, res) => {
-  return res.json(await db.select().from(couponsTable).orderBy(desc(couponsTable.createdAt)));
+router.get("/coupons", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(couponsTable)
+    .where(eq(couponsTable.storeId, storeId))
+    .orderBy(desc(couponsTable.createdAt)));
 });
 
-router.post("/coupons", requireAdmin, async (req, res) => {
+router.post("/coupons", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const [coupon] = await db.insert(couponsTable).values({
     id: randomUUID(),
+    storeId,
     code: String(req.body.code ?? "").trim().toUpperCase(),
     description: String(req.body.description ?? ""),
     discountType: req.body.discountType ?? "PERCENTAGE",
@@ -1129,21 +1314,23 @@ router.post("/contact", validate(contactSchema), async (req, res) => {
 export default router;
 
 // Orders Bulk Operations
-router.delete("/orders/bulk", requireAdmin, async (req, res) => {
+router.delete("/orders/bulk", requireAdmin, async (req: TenantRequest, res: Response) => {
   const { ids } = req.body as { ids?: string[] };
+  const storeId = req.storeId!;
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: "No order IDs provided" });
   }
   try {
-    await db.delete(ordersTable).where(inArray(ordersTable.id, ids));
+    await db.delete(ordersTable).where(and(inArray(ordersTable.id, ids), eq(ordersTable.storeId, storeId)));
     return res.json({ success: true, message: `Deleted ${ids.length} orders` });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.put("/orders/bulk", requireAdmin, async (req, res) => {
+router.put("/orders/bulk", requireAdmin, async (req: TenantRequest, res: Response) => {
   const { ids, status, paymentStatus } = req.body as { ids?: string[], status?: string, paymentStatus?: string };
+  const storeId = req.storeId!;
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: "No order IDs provided" });
   }
@@ -1156,17 +1343,18 @@ router.put("/orders/bulk", requireAdmin, async (req, res) => {
   }
   
   try {
-    await db.update(ordersTable).set(updates).where(inArray(ordersTable.id, ids));
+    await db.update(ordersTable).set(updates).where(and(inArray(ordersTable.id, ids), eq(ordersTable.storeId, storeId)));
     return res.json({ success: true, message: `Updated ${ids.length} orders` });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.delete("/orders/:id", requireAdmin, async (req, res) => {
+router.delete("/orders/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   const orderId = req.params.id as string;
+  const storeId = req.storeId!;
   try {
-    await db.delete(ordersTable).where(eq(ordersTable.id, orderId));
+    await db.delete(ordersTable).where(and(eq(ordersTable.id, orderId), eq(ordersTable.storeId, storeId)));
     return res.json({ success: true, message: "Order deleted" });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
@@ -1175,9 +1363,10 @@ router.delete("/orders/:id", requireAdmin, async (req, res) => {
 
 // ── Showroom Locations API Endpoints ──────────────────────────────────────────
 
-router.get("/showroom-locations", async (_req, res) => {
+router.get("/showroom-locations", async (req: TenantRequest, res: Response) => {
   try {
-    const locs = await db.select().from(showroomLocationsTable).where(eq(showroomLocationsTable.active, true));
+    const storeId = req.storeId!;
+    const locs = await db.select().from(showroomLocationsTable).where(and(eq(showroomLocationsTable.active, true), eq(showroomLocationsTable.storeId, storeId)));
     return res.json(locs);
   } catch (err) {
     console.error("Error fetching showroom locations:", err);
@@ -1185,9 +1374,10 @@ router.get("/showroom-locations", async (_req, res) => {
   }
 });
 
-router.get("/admin/showroom-locations", requireAdmin, async (_req, res) => {
+router.get("/admin/showroom-locations", requireAdmin, async (req: TenantRequest, res: Response) => {
   try {
-    const locs = await db.select().from(showroomLocationsTable).orderBy(showroomLocationsTable.name);
+    const storeId = req.storeId!;
+    const locs = await db.select().from(showroomLocationsTable).where(eq(showroomLocationsTable.storeId, storeId)).orderBy(showroomLocationsTable.name);
     return res.json(locs);
   } catch (err) {
     console.error("Error fetching admin showroom locations:", err);
@@ -1195,8 +1385,9 @@ router.get("/admin/showroom-locations", requireAdmin, async (_req, res) => {
   }
 });
 
-router.post("/admin/showroom-locations", requireAdmin, async (req, res) => {
+router.post("/admin/showroom-locations", requireAdmin, async (req: TenantRequest, res: Response) => {
   try {
+    const storeId = req.storeId!;
     const { name, address, city, country, phone, email, hours, imageUrl, active } = req.body;
     if (!name || !address || !city || !country) {
       return res.status(400).json({ error: "Name, address, city, and country are required" });
@@ -1204,6 +1395,7 @@ router.post("/admin/showroom-locations", requireAdmin, async (req, res) => {
     const id = `loc-${randomUUID().slice(0, 8)}`;
     await db.insert(showroomLocationsTable).values({
       id,
+      storeId,
       name,
       address,
       city,
@@ -1221,9 +1413,10 @@ router.post("/admin/showroom-locations", requireAdmin, async (req, res) => {
   }
 });
 
-router.put("/admin/showroom-locations/:id", requireAdmin, async (req, res) => {
+router.put("/admin/showroom-locations/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   try {
     const id = req.params.id as string;
+    const storeId = req.storeId!;
     const { name, address, city, country, phone, email, hours, imageUrl, active } = req.body;
     await db.update(showroomLocationsTable)
       .set({
@@ -1238,7 +1431,7 @@ router.put("/admin/showroom-locations/:id", requireAdmin, async (req, res) => {
         active,
         updatedAt: new Date(),
       })
-      .where(eq(showroomLocationsTable.id, id));
+      .where(and(eq(showroomLocationsTable.id, id), eq(showroomLocationsTable.storeId, storeId)));
     return res.json({ success: true });
   } catch (err) {
     console.error("Error updating showroom location:", err);
@@ -1246,10 +1439,11 @@ router.put("/admin/showroom-locations/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.delete("/admin/showroom-locations/:id", requireAdmin, async (req, res) => {
+router.delete("/admin/showroom-locations/:id", requireAdmin, async (req: TenantRequest, res: Response) => {
   try {
     const id = req.params.id as string;
-    await db.delete(showroomLocationsTable).where(eq(showroomLocationsTable.id, id));
+    const storeId = req.storeId!;
+    await db.delete(showroomLocationsTable).where(and(eq(showroomLocationsTable.id, id), eq(showroomLocationsTable.storeId, storeId)));
     return res.json({ success: true });
   } catch (err) {
     console.error("Error deleting showroom location:", err);

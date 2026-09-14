@@ -429,41 +429,19 @@ PAYPAL_CLIENT_SECRET=E...`}
                         P
                       </div>
                       <div>
-                        <h4 className="font-serif font-bold text-lg text-slate-900">Paystack Configuration</h4>
+                        <h4 className="font-serif font-bold text-lg text-slate-900">Paystack Connect</h4>
                         <p className="text-[11px] font-[Manrope] text-slate-500">Cards, Bank Transfer &amp; USSD (NGN, GHS, ZAR, KES, USD)</p>
                       </div>
                     </div>
-                    <a href="https://dashboard.paystack.com/#/settings/developer" target="_blank" rel="noreferrer" className="text-xs font-[Manrope] text-[#0BA4DB] font-bold hover:underline flex items-center gap-1">
-                      Dashboard <MdOpenInNew className="text-xs" />
-                    </a>
                   </div>
-
-                  <ol className="space-y-3 text-xs font-[Manrope] text-slate-600 mb-6">
-                    <li className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
-                      <span><strong>Log in</strong> to your <a href="https://dashboard.paystack.com" target="_blank" rel="noreferrer" className="text-[#0BA4DB] underline">Paystack Dashboard</a>.</span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
-                      <span>Go to <em>Settings → API Keys &amp; Webhooks</em>.</span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
-                      <span>Copy your <strong>Public Key</strong> (<code className="bg-slate-100 px-1 font-mono text-[10px]">pk_live_...</code>) and <strong>Secret Key</strong> (<code className="bg-slate-100 px-1 font-mono text-[10px]">sk_live_...</code>).</span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">4</span>
-                      <span>Paste credentials into <strong>Manual Key Entry</strong> or click 1-Click Connect. Set Webhook URL:</span>
-                    </li>
-                  </ol>
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-700 break-all select-all">
-                    <span>{typeof window !== "undefined" ? window.location.origin : ""}/api/payments/webhooks/paystack</span>
-                    <button onClick={() => copyToClipboard(`${window.location.origin}/api/payments/webhooks/paystack`, "wh_paystack")} className="text-slate-500 hover:text-slate-900 p-1 shrink-0">
-                      {copiedText === "wh_paystack" ? <MdCheckCircle className="text-emerald-500 text-sm" /> : <MdContentCopy className="text-xs" />}
-                    </button>
+                  <div className="space-y-3 text-xs font-[Manrope] text-slate-600 mb-6">
+                    <p>
+                      Paystack is configured via <strong>Paystack Connect</strong> (OAuth2). 
+                      Click the "Connect with Paystack" button in the Payment Gateways manager above to authorize this store.
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-2">
+                      Manual configuration is disabled in this environment.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -477,41 +455,19 @@ PAYPAL_CLIENT_SECRET=E...`}
                         F
                       </div>
                       <div>
-                        <h4 className="font-serif font-bold text-lg text-slate-900">Flutterwave Configuration</h4>
+                        <h4 className="font-serif font-bold text-lg text-slate-900">Flutterwave Connect</h4>
                         <p className="text-[11px] font-[Manrope] text-slate-500">Pan-African Multi-Currency Cards, MPesa &amp; Mobile Money</p>
                       </div>
                     </div>
-                    <a href="https://dashboard.flutterwave.com/settings/apis" target="_blank" rel="noreferrer" className="text-xs font-[Manrope] text-[#FB9129] font-bold hover:underline flex items-center gap-1">
-                      Dashboard <MdOpenInNew className="text-xs" />
-                    </a>
                   </div>
-
-                  <ol className="space-y-3 text-xs font-[Manrope] text-slate-600 mb-6">
-                    <li className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
-                      <span><strong>Log in</strong> to your <a href="https://dashboard.flutterwave.com" target="_blank" rel="noreferrer" className="text-[#FB9129] underline">Flutterwave Dashboard</a>.</span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
-                      <span>Navigate to <em>Settings → API Keys</em>.</span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
-                      <span>Copy your <strong>Public Key</strong> (<code className="bg-slate-100 px-1 font-mono text-[10px]">FLWPUBK_PLIF-...</code>) and <strong>Secret Key</strong> (<code className="bg-slate-100 px-1 font-mono text-[10px]">FLWSECK_PLIF-...</code>).</span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">4</span>
-                      <span>Enter Secret Hash / Webhook URL in Flutterwave dashboard:</span>
-                    </li>
-                  </ol>
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-700 break-all select-all">
-                    <span>{typeof window !== "undefined" ? window.location.origin : ""}/api/payments/webhooks/flutterwave</span>
-                    <button onClick={() => copyToClipboard(`${window.location.origin}/api/payments/webhooks/flutterwave`, "wh_flw")} className="text-slate-500 hover:text-slate-900 p-1 shrink-0">
-                      {copiedText === "wh_flw" ? <MdCheckCircle className="text-emerald-500 text-sm" /> : <MdContentCopy className="text-xs" />}
-                    </button>
+                  <div className="space-y-3 text-xs font-[Manrope] text-slate-600 mb-6">
+                    <p>
+                      Flutterwave is configured via <strong>Flutterwave Connect</strong> (OAuth2). 
+                      Click the "Connect with Flutterwave" button in the Payment Gateways manager above to authorize this store.
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-2">
+                      Manual configuration is disabled in this environment.
+                    </p>
                   </div>
                 </div>
               </div>

@@ -1,19 +1,26 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { db, appSettingsTable } from "@workspace/db";
 import { addEvent } from "./channels";
+import { and, eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
 // Public webhook for DHL express flight scans and parcel updates
-router.post("/shipping/dhl/webhook", async (req, res) => {
+// NOTE: DHL webhooks usually contain a reference that helps identify the tenant.
+// For now, this implementation is generic and might need better tenant identification.
+router.post("/shipping/dhl/webhook", async (req: TenantRequest, res: Response) => {
   try {
+    const storeId = req.storeId!;
     const payload = req.body;
     await addEvent(
       "dhl",
       "Scan Update",
       `DHL Express event: ${payload?.eventCode || "transit_scan"}`,
-      "sync"
+      "sync",
+      storeId
     );
     return res.json({ status: "ACKNOWLEDGED" });
   } catch (err: any) {
@@ -24,9 +31,10 @@ router.post("/shipping/dhl/webhook", async (req, res) => {
 // Admin-only DHL logistics endpoints
 router.use("/shipping/dhl", requireAdmin);
 
-router.get("/shipping/dhl/config", async (_req, res) => {
+router.get("/shipping/dhl/config", async (req: TenantRequest, res: Response) => {
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const storeId = req.storeId!;
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
     const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
     return res.json({
@@ -43,8 +51,9 @@ router.get("/shipping/dhl/config", async (_req, res) => {
   }
 });
 
-router.post("/shipping/dhl/config", async (req, res) => {
+router.post("/shipping/dhl/config", async (req: TenantRequest, res: Response) => {
   try {
+    const storeId = req.storeId!;
     const { apiKey, apiSecret, accountNumber, pickupLocation, paperlessTrade, signatureRequired } = req.body;
 
     const entries = [
@@ -63,9 +72,9 @@ router.post("/shipping/dhl/config", async (req, res) => {
       if (value !== undefined) {
         await db
           .insert(appSettingsTable)
-          .values({ key, value, updatedAt: new Date() })
+          .values({ id: randomUUID(), storeId, key, value, updatedAt: new Date() })
           .onConflictDoUpdate({
-            target: appSettingsTable.key,
+            target: [appSettingsTable.storeId, appSettingsTable.key],
             set: { value, updatedAt: new Date() },
           });
       }
@@ -75,7 +84,8 @@ router.post("/shipping/dhl/config", async (req, res) => {
       "dhl",
       "Settings updated",
       "DHL Express Worldwide Logistics connector settings updated",
-      "info"
+      "info",
+      storeId
     );
 
     return res.json({ success: true, message: "DHL Express settings saved successfully" });
@@ -84,8 +94,9 @@ router.post("/shipping/dhl/config", async (req, res) => {
   }
 });
 
-router.post("/shipping/dhl/generate-waybill", async (req, res) => {
+router.post("/shipping/dhl/generate-waybill", async (req: TenantRequest, res: Response) => {
   try {
+    const storeId = req.storeId!;
     const { orderId } = req.body;
     const trackingNumber = `DHL-${Math.floor(1000000000 + Math.random() * 9000000000)}`;
 
@@ -93,7 +104,8 @@ router.post("/shipping/dhl/generate-waybill", async (req, res) => {
       "dhl",
       "Air Waybill Generated",
       `Generated DHL Air Waybill #${trackingNumber} for Order #${orderId || "TEST"}`,
-      "sync"
+      "sync",
+      storeId
     );
 
     return res.json({

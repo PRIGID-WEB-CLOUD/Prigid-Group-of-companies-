@@ -342,68 +342,18 @@ export default function AdminInstagramPage() {
 
         {tab === "credentials" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900 mb-1">Instagram API Credentials</h2>
-              <p className="text-sm text-slate-500">
-                Connect your professional Instagram account, or auto-link via Meta Business Suite.
-              </p>
-            </div>
-
-            {metaStatus?.connected || creds.source === "meta_business" ? (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <SiMeta className="text-2xl text-[#0668E1] shrink-0" />
-                  <div>
-                    <p className="text-xs font-serif font-bold text-emerald-900 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
-                      Auto-Configured via Meta Business Suite
-                    </p>
-                    <p className="text-[11px] font-[Manrope] text-emerald-700 mt-0.5">
-                      This Instagram account was automatically discovered and linked from your Facebook for Business login. Manual token entry is not required.
-                    </p>
-                  </div>
+            <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex items-center gap-3 mb-4">
+                <MdKey className="text-2xl text-slate-400" />
+                <div>
+                  <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                  <p className="text-xs font-[Manrope] text-slate-500 mt-1">Manual entry of Instagram credentials is disabled in this environment.</p>
                 </div>
-                <Link href="/channels/meta-business" className="px-3 py-1 bg-white border border-emerald-300 text-emerald-800 text-xs font-bold rounded-lg no-underline hover:bg-emerald-100 whitespace-nowrap">
-                  Manage Suite
-                </Link>
               </div>
-            ) : (
-              <div className="p-4 bg-[#eff4ff] border border-blue-200 rounded-xl flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <SiMeta className="text-2xl text-[#0668E1] shrink-0" />
-                  <div>
-                    <p className="text-xs font-serif font-bold text-[#0b1c30]">Don't want to copy and paste Instagram IDs manually?</p>
-                    <p className="text-[11px] font-[Manrope] text-[#7c839b] mt-0.5">Use Meta Business Suite Login to auto-link your Instagram account in 1 click.</p>
-                  </div>
-                </div>
-                <Link
-                  href="/channels/meta-business"
-                  className="px-3.5 py-1.5 bg-[#0668E1] hover:bg-blue-700 text-white font-[Manrope] font-bold text-xs rounded-lg transition-colors whitespace-nowrap no-underline"
-                >
-                  Connect Meta Business
-                </Link>
-              </div>
-            )}
-
-            <div className="space-y-4 max-w-lg pt-2">
-              <CredField label="Instagram Business Account ID" hint="17841400000000000" value={creds.ig_user_id} onChange={(v) => setCreds((p) => ({ ...p, ig_user_id: v }))} />
-              <CredField label="Page Access Token" hint="EAABsbCS..." value={creds.page_access_token} onChange={(v) => setCreds((p) => ({ ...p, page_access_token: v }))} type="password" />
-            </div>
-            <div className="mt-5 flex items-center gap-3">
-              <button onClick={saveCreds} disabled={saving} className="px-5 py-2 bg-[#006c49] text-white text-sm font-medium rounded-lg hover:bg-[#005a3d] disabled:opacity-50 transition-colors">
-                {saving ? "Saving…" : "Save Credentials"}
-              </button>
-              {saveMsg && <span className="text-sm text-[#006c49]">{saveMsg}</span>}
-            </div>
-            <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <p className="text-xs font-semibold text-slate-700 mb-2">How to get your Instagram Business Account ID</p>
-              <ol className="text-xs text-slate-600 space-y-1 list-decimal list-inside">
-                <li>Go to Meta Developer Console → Your App → Instagram API</li>
-                <li>Connect your Facebook Page (must have linked Instagram account)</li>
-                <li>Use the Graph API Explorer: <code className="bg-white px-1 rounded border">GET /&#123;page-id&#125;?fields=instagram_business_account</code></li>
-                <li>Copy the nested <code className="bg-white px-1 rounded border">id</code> — that is your IG Business Account ID</li>
-                <li>Generate a long-lived Page Access Token for your Page</li>
-              </ol>
+              <ul className="space-y-2 text-xs font-[Manrope] text-slate-600 list-disc list-inside">
+                <li><span className="font-bold text-slate-800">Instagram Business Account ID</span></li>
+                <li><span className="font-bold text-slate-800">Page Access Token</span></li>
+              </ul>
             </div>
           </div>
         )}

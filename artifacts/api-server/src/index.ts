@@ -32,9 +32,6 @@ async function start() {
 
   const server = app.listen(port, () => {
     logger.info({ port }, "Server listening");
-    ensureDefaults().catch((err) => {
-      logger.error({ err }, "Failed to ensure default channel configurations");
-    });
   });
 
   server.on("error", (err) => {

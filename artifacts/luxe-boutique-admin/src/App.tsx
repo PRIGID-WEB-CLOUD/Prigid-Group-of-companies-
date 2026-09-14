@@ -55,65 +55,65 @@ function Router() {
       <Route path="/products/edit" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
       <Route path="/products/edit/:id" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
       <Route path="/products/:id/edit" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
-      <Route path="/admin/products/new" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
-      <Route path="/admin/products/edit" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
-      <Route path="/admin/products/edit/:id" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
-      <Route path="/admin/products/:id/edit" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
-      <Route path="/admin/catalog" component={() => <AdminGuard><AdminCatalogPage /></AdminGuard>} />
-      <Route path="/admin/dashboard" component={() => <AdminGuard><AdminDashboardPage /></AdminGuard>} />
+      <Route path="/seller/products/new" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
+      <Route path="/seller/products/edit" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
+      <Route path="/seller/products/edit/:id" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
+      <Route path="/seller/products/:id/edit" component={() => <AdminGuard><AdminProductEditorPage /></AdminGuard>} />
+      <Route path="/seller/catalog" component={() => <AdminGuard><AdminCatalogPage /></AdminGuard>} />
+      <Route path="/seller/dashboard" component={() => <AdminGuard><AdminDashboardPage /></AdminGuard>} />
       <Route path="/customers" component={() => <AdminGuard><AdminCustomersPage /></AdminGuard>} />
       <Route path="/chat" component={() => <AdminGuard><AdminChatPage /></AdminGuard>} />
-      <Route path="/admin/chat" component={() => <AdminGuard><AdminChatPage /></AdminGuard>} />
+      <Route path="/seller/chat" component={() => <AdminGuard><AdminChatPage /></AdminGuard>} />
       <Route path="/analytics" component={() => <AdminGuard><AdminAnalyticsPage /></AdminGuard>} />
       <Route path="/channels" component={() => <AdminGuard><AdminChannelHubPage /></AdminGuard>} />
-      <Route path="/admin/channels" component={() => <AdminGuard><AdminChannelHubPage /></AdminGuard>} />
+      <Route path="/seller/channels" component={() => <AdminGuard><AdminChannelHubPage /></AdminGuard>} />
       <Route path="/channels/tiktok" component={() => <AdminGuard><AdminTikTokPage /></AdminGuard>} />
-      <Route path="/admin/channels/tiktok" component={() => <AdminGuard><AdminTikTokPage /></AdminGuard>} />
+      <Route path="/seller/channels/tiktok" component={() => <AdminGuard><AdminTikTokPage /></AdminGuard>} />
       <Route path="/channels/pinterest" component={() => <AdminGuard><AdminPinterestPage /></AdminGuard>} />
-      <Route path="/admin/channels/pinterest" component={() => <AdminGuard><AdminPinterestPage /></AdminGuard>} />
+      <Route path="/seller/channels/pinterest" component={() => <AdminGuard><AdminPinterestPage /></AdminGuard>} />
       <Route path="/calendar" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
-      <Route path="/admin/calendar" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
+      <Route path="/seller/calendar" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
       <Route path="/channels/google-workspace" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
       <Route path="/google-workspace" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
-      <Route path="/admin/google-workspace" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
-      <Route path="/admin/channels/google-workspace" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
+      <Route path="/seller/google-workspace" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
+      <Route path="/seller/channels/google-workspace" component={() => <AdminGuard><AdminGoogleWorkspacePage /></AdminGuard>} />
       <Route path="/channels/facebook" component={() => <AdminGuard><AdminFacebookPage /></AdminGuard>} />
-      <Route path="/admin/channels/facebook" component={() => <AdminGuard><AdminFacebookPage /></AdminGuard>} />
+      <Route path="/seller/channels/facebook" component={() => <AdminGuard><AdminFacebookPage /></AdminGuard>} />
       <Route path="/channels/instagram" component={() => <AdminGuard><AdminInstagramPage /></AdminGuard>} />
-      <Route path="/admin/channels/instagram" component={() => <AdminGuard><AdminInstagramPage /></AdminGuard>} />
+      <Route path="/seller/channels/instagram" component={() => <AdminGuard><AdminInstagramPage /></AdminGuard>} />
       <Route path="/channels/meta-commerce" component={() => <AdminGuard><AdminMetaCommercePage /></AdminGuard>} />
-      <Route path="/admin/channels/meta-commerce" component={() => <AdminGuard><AdminMetaCommercePage /></AdminGuard>} />
+      <Route path="/seller/channels/meta-commerce" component={() => <AdminGuard><AdminMetaCommercePage /></AdminGuard>} />
       <Route path="/channels/meta-business" component={() => <AdminGuard><AdminMetaBusinessPage /></AdminGuard>} />
-      <Route path="/admin/channels/meta-business" component={() => <AdminGuard><AdminMetaBusinessPage /></AdminGuard>} />
+      <Route path="/seller/channels/meta-business" component={() => <AdminGuard><AdminMetaBusinessPage /></AdminGuard>} />
       <Route path="/channels/meta-ads" component={() => <AdminGuard><AdminMetaAdsPage /></AdminGuard>} />
-      <Route path="/admin/channels/meta-ads" component={() => <AdminGuard><AdminMetaAdsPage /></AdminGuard>} />
+      <Route path="/seller/channels/meta-ads" component={() => <AdminGuard><AdminMetaAdsPage /></AdminGuard>} />
       <Route path="/channels/whatsapp" component={() => <AdminGuard><AdminWhatsAppPage /></AdminGuard>} />
-      <Route path="/admin/channels/whatsapp" component={() => <AdminGuard><AdminWhatsAppPage /></AdminGuard>} />
+      <Route path="/seller/channels/whatsapp" component={() => <AdminGuard><AdminWhatsAppPage /></AdminGuard>} />
       <Route path="/channels/twitter" component={() => <AdminGuard><AdminTwitterPage /></AdminGuard>} />
-      <Route path="/admin/channels/twitter" component={() => <AdminGuard><AdminTwitterPage /></AdminGuard>} />
+      <Route path="/seller/channels/twitter" component={() => <AdminGuard><AdminTwitterPage /></AdminGuard>} />
       <Route path="/channels/analytics" component={() => <AdminGuard><AdminSocialAnalyticsPage /></AdminGuard>} />
-      <Route path="/admin/channels/analytics" component={() => <AdminGuard><AdminSocialAnalyticsPage /></AdminGuard>} />
+      <Route path="/seller/channels/analytics" component={() => <AdminGuard><AdminSocialAnalyticsPage /></AdminGuard>} />
       <Route path="/blog" component={() => <AdminGuard><AdminBlogPage /></AdminGuard>} />
       <Route path="/blog/new" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
       <Route path="/blog/edit" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
       <Route path="/blog/edit/:id" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
       <Route path="/blog/:id/edit" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
-      <Route path="/admin/blog/new" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
-      <Route path="/admin/blog/edit" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
-      <Route path="/admin/blog/edit/:id" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
+      <Route path="/seller/blog/new" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
+      <Route path="/seller/blog/edit" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
+      <Route path="/seller/blog/edit/:id" component={() => <AdminGuard><AdminBlogEditorPage /></AdminGuard>} />
       <Route path="/media" component={() => <AdminGuard><AdminMediaPage /></AdminGuard>} />
       <Route path="/newsletter" component={() => <AdminGuard><AdminNewsletterPage /></AdminGuard>} />
       <Route path="/settings" component={() => <AdminGuard><AdminSettingsPage /></AdminGuard>} />
       <Route path="/team" component={() => <AdminGuard><AdminTeamPage /></AdminGuard>} />
       <Route path="/coupons" component={() => <AdminGuard><AdminCouponsPage /></AdminGuard>} />
       <Route path="/showrooms" component={() => <AdminGuard><AdminShowroomsPage /></AdminGuard>} />
-      <Route path="/admin/showrooms" component={() => <AdminGuard><AdminShowroomsPage /></AdminGuard>} />
+      <Route path="/seller/showrooms" component={() => <AdminGuard><AdminShowroomsPage /></AdminGuard>} />
       <Route path="/providers" component={() => <AdminGuard><AdminProvidersPage /></AdminGuard>} />
-      <Route path="/admin/providers" component={() => <AdminGuard><AdminProvidersPage /></AdminGuard>} />
+      <Route path="/seller/providers" component={() => <AdminGuard><AdminProvidersPage /></AdminGuard>} />
       <Route path="/appstore" component={() => <AdminGuard><AdminAppStorePage /></AdminGuard>} />
-      <Route path="/admin/appstore" component={() => <AdminGuard><AdminAppStorePage /></AdminGuard>} />
+      <Route path="/seller/appstore" component={() => <AdminGuard><AdminAppStorePage /></AdminGuard>} />
       <Route path="/notifications" component={() => <AdminGuard><AdminNotificationsPage /></AdminGuard>} />
-      <Route path="/admin/notifications" component={() => <AdminGuard><AdminNotificationsPage /></AdminGuard>} />
+      <Route path="/seller/notifications" component={() => <AdminGuard><AdminNotificationsPage /></AdminGuard>} />
       <Route component={() => <AdminGuard><AdminDashboardPage /></AdminGuard>} />
     </Switch>
   );
@@ -125,7 +125,7 @@ function App() {
       <TooltipProvider>
         <AuthProvider>
           <CurrencyProvider>
-            <WouterRouter base="/admin">
+            <WouterRouter base="/seller">
               <div className="min-h-screen flex flex-col bg-white font-sans antialiased text-slate-900 selection:bg-slate-900 selection:text-white">
                 <Router />
               </div>

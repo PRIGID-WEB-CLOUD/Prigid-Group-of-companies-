@@ -2,14 +2,17 @@ import { Router } from "express";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { db, appSettingsTable } from "@workspace/db";
 import { addEvent } from "./channels";
+import { and, eq } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
 router.use("/integrations/klaviyo", requireAdmin);
 
-router.get("/integrations/klaviyo/config", async (_req, res) => {
+router.get("/integrations/klaviyo/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
     const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
     return res.json({
@@ -26,7 +29,8 @@ router.get("/integrations/klaviyo/config", async (_req, res) => {
   }
 });
 
-router.post("/integrations/klaviyo/config", async (req, res) => {
+router.post("/integrations/klaviyo/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
     const { publicKey, privateKey, smsSenderNumber, smsEnabled, backInStockFlow, vipTierAutomations } = req.body;
 
@@ -46,9 +50,9 @@ router.post("/integrations/klaviyo/config", async (req, res) => {
       if (value !== undefined) {
         await db
           .insert(appSettingsTable)
-          .values({ key, value, updatedAt: new Date() })
+          .values({ key, value, storeId, updatedAt: new Date() })
           .onConflictDoUpdate({
-            target: appSettingsTable.key,
+            target: [appSettingsTable.storeId, appSettingsTable.key],
             set: { value, updatedAt: new Date() },
           });
       }
@@ -58,7 +62,8 @@ router.post("/integrations/klaviyo/config", async (req, res) => {
       "klaviyo",
       "Settings updated",
       "Klaviyo VIP CRM & SMS connector settings updated",
-      "info"
+      "info",
+      storeId
     );
 
     return res.json({ success: true, message: "Klaviyo settings saved successfully" });
@@ -67,14 +72,16 @@ router.post("/integrations/klaviyo/config", async (req, res) => {
   }
 });
 
-router.post("/integrations/klaviyo/test-sms", async (req, res) => {
+router.post("/integrations/klaviyo/test-sms", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   try {
     const { phoneNumber } = req.body;
     await addEvent(
       "klaviyo",
       "Test SMS Sent",
       `Dispatched test VIP Concierge SMS to ${phoneNumber || "admin phone"}`,
-      "sync"
+      "sync",
+      storeId
     );
 
     return res.json({

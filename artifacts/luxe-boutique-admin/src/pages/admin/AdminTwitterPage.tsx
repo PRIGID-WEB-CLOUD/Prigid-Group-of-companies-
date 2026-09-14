@@ -603,69 +603,25 @@ export default function AdminTwitterPage() {
                           </p>
                         </div>
 
-                        {twConfig?.hasEnvClientId ? (
-                          <div className="p-4 bg-emerald-50 border border-emerald-200/60 rounded-xl flex items-start gap-3">
-                            <MdCheckCircle className="text-emerald-600 text-lg shrink-0 mt-0.5" />
-                            <div className="text-xs font-[Manrope] text-emerald-800 leading-relaxed">
-                              <strong>Environment Credentials Detected</strong>
-                              <p className="mt-1 text-emerald-700/90 font-medium">
-                                Your X App OAuth 2.0 Client ID and Client Secret are loaded directly from the system environment variables. No manual input is necessary.
-                              </p>
+                        <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl">
+                          <div className="flex items-center gap-3 mb-4">
+                            <MdKey className="text-2xl text-slate-400" />
+                            <div>
+                              <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                              <p className="text-xs font-[Manrope] text-slate-500 mt-1">Manual entry of Twitter credentials is disabled in this environment.</p>
                             </div>
                           </div>
-                        ) : (
-                          <div className="space-y-4">
-                            {TW_OAUTH_FIELDS.map((field) => {
-                              const val = credsDirty[field.key] ?? "";
-                              const saved = twCreds[field.key] ?? "";
-                              const isDirty = val !== saved;
-                              const visible = showSecret[field.key];
-                              return (
-                                <div key={field.key} className="space-y-1.5">
-                                  <div className="flex items-center justify-between">
-                                    <label className="font-[Manrope] font-bold text-[11px] tracking-widest uppercase text-[#45464d]">{field.label}</label>
-                                    <div className="flex items-center gap-2">
-                                      {isDirty && val !== "" && <span className="text-[9px] font-[Manrope] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Unsaved</span>}
-                                      {!isDirty && saved && <span className="text-[9px] font-[Manrope] font-bold uppercase tracking-widest text-[#006c49] bg-[#f0faf6] px-2 py-0.5 rounded-full flex items-center gap-1"><MdCheckCircle className="text-[10px]" />Saved</span>}
-                                    </div>
-                                  </div>
-                                  <div className="relative flex items-center">
-                                    <input
-                                      type={field.isSecret && !visible ? "password" : "text"}
-                                      value={val}
-                                      onChange={(e) => setCredsDirty((p) => ({ ...p, [field.key]: e.target.value }))}
-                                      placeholder={field.isSecret ? "••••••••••••••••" : `Enter ${field.label}…`}
-                                      className={`w-full bg-white border rounded-lg px-4 py-2.5 font-mono text-sm outline-none transition-colors pr-20 ${isDirty && val !== "" ? "border-amber-300 focus:border-amber-500" : "border-slate-200 focus:border-[#006c49]"}`}
-                                    />
-                                    <div className="absolute right-2 flex items-center gap-1">
-                                      {field.isSecret && (
-                                        <button onClick={() => setShowSecret((p) => ({ ...p, [field.key]: !p[field.key] }))} className="p-1 text-slate-400 hover:text-black transition-colors">
-                                          {visible ? <MdVisibilityOff className="text-sm" /> : <MdVisibility className="text-sm" />}
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <p className="text-[11px] text-[#7c839b] font-[Manrope] italic">{field.hint}</p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                          <ul className="space-y-2 text-xs font-[Manrope] text-slate-600 list-disc list-inside">
+                            {TW_OAUTH_FIELDS.map(f => (
+                              <li key={f.key}><span className="font-bold text-slate-800">{f.label}</span></li>
+                            ))}
+                          </ul>
+                        </div>
 
                         <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                          {!twConfig?.hasEnvClientId && (
-                            <button
-                              onClick={saveTwCreds}
-                              disabled={credsSaving}
-                              className="py-3 px-6 bg-black text-white font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-slate-800 disabled:opacity-60 transition-colors rounded-lg flex items-center justify-center gap-2"
-                            >
-                              <div className={`text-sm ${credsSaving ? "animate-spin" : ""}`}>{credsSaving ? <MdRefresh /> : <MdSave />}</div>
-                              Save OAuth App Keys
-                            </button>
-                          )}
                           <button
                             onClick={connectTwitterOAuth}
-                            disabled={connectingOAuth || (!twConfig?.hasEnvClientId && !credsDirty.client_id)}
+                            disabled={connectingOAuth}
                             className="flex-1 py-3 bg-[#006c49] hover:bg-[#005237] text-white font-[Manrope] font-bold text-xs tracking-widest uppercase disabled:opacity-40 transition-colors rounded-lg flex items-center justify-center gap-2"
                           >
                             <SiX className="text-sm" />

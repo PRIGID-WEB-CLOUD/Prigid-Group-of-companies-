@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { SiMeta } from "react-icons/si";
-import { MdCloudUpload, MdLink, MdDelete } from "react-icons/md";
+import { MdCloudUpload, MdLink, MdDelete, MdKey, MdCheckCircle } from "react-icons/md";
 import AdminLayout from "./AdminLayout";
 
 type Tab = "credentials" | "catalog" | "products" | "sync";
@@ -489,96 +489,20 @@ export default function AdminMetaCommercePage() {
 
         {tab === "credentials" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900 mb-1">Meta Commerce Credentials</h2>
-              <p className="text-sm text-slate-500">
-                Configure your product catalog connection, or link automatically via Meta Business Suite.
-              </p>
-            </div>
-
-            {metaStatus?.connected || creds.source === "meta_business" ? (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <SiMeta className="text-2xl text-[#0668E1] shrink-0" />
-                  <div>
-                    <p className="text-xs font-serif font-bold text-emerald-900 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
-                      Auto-Configured via Meta Business Suite
-                    </p>
-                    <p className="text-[11px] font-[Manrope] text-emerald-700 mt-0.5">
-                      This Product Catalog was automatically discovered and linked from your Facebook for Business login. Manual token entry is not required.
-                    </p>
-                  </div>
+            <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex items-center gap-3 mb-4">
+                <MdKey className="text-2xl text-slate-400" />
+                <div>
+                  <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                  <p className="text-xs font-[Manrope] text-slate-500 mt-1">Manual entry of Meta Commerce credentials is disabled in this environment.</p>
                 </div>
-                <Link href="/channels/meta-business" className="px-3 py-1 bg-white border border-emerald-300 text-emerald-800 text-xs font-bold rounded-lg no-underline hover:bg-emerald-100 whitespace-nowrap">
-                  Manage Suite
-                </Link>
               </div>
-            ) : (
-              <div className="p-4 bg-[#eff4ff] border border-blue-200 rounded-xl flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <SiMeta className="text-2xl text-[#0668E1] shrink-0" />
-                  <div>
-                    <p className="text-xs font-serif font-bold text-[#0b1c30]">Don't want to copy and paste Catalog IDs manually?</p>
-                    <p className="text-[11px] font-[Manrope] text-[#7c839b] mt-0.5">Use Meta Business Suite Login to auto-link your Product Catalog in 1 click.</p>
-                  </div>
-                </div>
-                <Link
-                  href="/channels/meta-business"
-                  className="px-3.5 py-1.5 bg-[#0668E1] hover:bg-blue-700 text-white font-[Manrope] font-bold text-xs rounded-lg transition-colors whitespace-nowrap no-underline"
-                >
-                  Connect Meta Business
-                </Link>
-              </div>
-            )}
-
-            <div className="space-y-4 max-w-lg pt-2">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-slate-700">Product Catalog ID</label>
-                  {creds.page_access_token && (
-                    <button 
-                      onClick={discoverCatalogs} 
-                      disabled={discovering} 
-                      className="text-xs text-[#0668E1] hover:underline flex items-center gap-1"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">refresh</span>
-                      {discovering ? "Refreshing..." : "Refresh Catalogs"}
-                    </button>
-                  )}
-                </div>
-                {discoveredCatalogs && discoveredCatalogs.length > 0 ? (
-                  <select
-                    value={creds.catalog_id}
-                    onChange={(e) => setCreds(p => ({ ...p, catalog_id: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006c49]/20 focus:border-[#006c49]"
-                  >
-                    <option value="">Select a discovered catalog...</option>
-                    {discoveredCatalogs.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input 
-                    type="text" 
-                    value={creds.catalog_id} 
-                    onChange={(e) => setCreds((p) => ({ ...p, catalog_id: e.target.value }))} 
-                    placeholder="1234567890" 
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006c49]/20 focus:border-[#006c49] font-mono" 
-                  />
-                )}
-                {discoveredCatalogs && discoveredCatalogs.length === 0 && (
-                  <p className="text-[11px] text-amber-600 mt-1">No catalogs found for this token. Try manual entry or check permissions.</p>
-                )}
-              </div>
-              <CredField label="Page Access Token / System User Token" hint="EAABsbCS..." value={creds.page_access_token} onChange={(v) => setCreds((p) => ({ ...p, page_access_token: v }))} type="password" />
+              <ul className="space-y-2 text-xs font-[Manrope] text-slate-600 list-disc list-inside">
+                <li><span className="font-bold text-slate-800">Product Catalog ID</span></li>
+                <li><span className="font-bold text-slate-800">Page Access Token</span></li>
+              </ul>
             </div>
-            <div className="mt-5 flex items-center gap-3">
-              <button onClick={saveCreds} disabled={saving} className="px-5 py-2 bg-[#006c49] text-white text-sm font-medium rounded-lg hover:bg-[#005a3d] disabled:opacity-50 transition-colors">
-                {saving ? "Saving…" : "Save Credentials"}
-              </button>
-              {saveMsg && <span className="text-sm text-[#006c49]">{saveMsg}</span>}
-            </div>
+            
             <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
               <p className="text-xs font-semibold text-blue-900 mb-2">Required Permissions</p>
               <div className="flex flex-wrap gap-2">

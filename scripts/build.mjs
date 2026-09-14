@@ -34,7 +34,7 @@ async function run() {
   execSync("npm run build --workspace=@workspace/luxe-boutique-admin", {
     cwd: rootDir,
     stdio: "inherit",
-    env: { ...process.env, NODE_ENV: "production", PORT: "3000", BASE_PATH: "/admin/" },
+    env: { ...process.env, NODE_ENV: "production", PORT: "3000", BASE_PATH: "/seller/" },
   });
 
   console.log("==> [4/4] Assembling unified dist/ directory...");
@@ -49,8 +49,8 @@ async function run() {
 
   const adminDist = path.resolve(rootDir, "artifacts/luxe-boutique-admin/dist/public");
   if (await exists(adminDist)) {
-    console.log("  -> Copying Admin Portal files to dist/admin/...");
-    const distAdmin = path.resolve(distDir, "admin");
+    console.log("  -> Copying Admin Portal files to dist/seller/...");
+    const distAdmin = path.resolve(distDir, "seller");
     await mkdir(distAdmin, { recursive: true });
     await cp(adminDist, distAdmin, { recursive: true });
   }
@@ -61,6 +61,14 @@ async function run() {
     const distServer = path.resolve(distDir, "server");
     await mkdir(distServer, { recursive: true });
     await cp(serverDist, distServer, { recursive: true });
+  }
+
+  const landingSrc = path.resolve(rootDir, "artifacts/prigid-landing");
+  if (await exists(landingSrc)) {
+    console.log("  -> Copying SaaS Landing Page to dist/landing/...");
+    const distLanding = path.resolve(distDir, "landing");
+    await mkdir(distLanding, { recursive: true });
+    await cp(landingSrc, distLanding, { recursive: true });
   }
 
   const mobileStaticBuild = path.resolve(rootDir, "artifacts/luxe-boutique-mobile/static-build");

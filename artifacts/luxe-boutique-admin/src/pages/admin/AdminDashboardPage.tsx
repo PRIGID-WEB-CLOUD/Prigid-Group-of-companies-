@@ -222,6 +222,115 @@ function SuperAdminPanel({ stats }: { stats: Stats }) {
           <RecentOrdersTable orders={stats.recentOrders} />
         </div>
       </div>
+
+      <SaaSStoreManager />
+    </div>
+  );
+}
+
+function SaaSStoreManager() {
+  const { data: stores, refetch: refetchStores } = useQuery<any[]>({
+    queryKey: ["admin-stores"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/stores");
+      if (!res.ok) throw new Error("Failed to load stores");
+      return res.json();
+    },
+  });
+
+  return (
+    <div className="bg-white shadow-[0px_4px_20px_rgba(15,23,42,0.05)] rounded-sm overflow-hidden mt-8">
+      <div className="px-4 sm:px-8 py-6 border-b border-slate-100 flex justify-between items-center">
+        <h3 className="text-[18px] sm:text-[20px] font-serif font-semibold text-slate-900">SaaS Platform Store Manager</h3>
+        <span className="text-xs font-[Manrope] font-bold tracking-widest uppercase text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+          {stores?.length ?? 0} Store(s) Registered
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/50">
+              <th className="px-4 sm:px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 font-[Manrope]">Boutique / Store Name</th>
+              <th className="px-4 sm:px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 font-[Manrope]">Subdomain (Slug)</th>
+              <th className="px-4 sm:px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 font-[Manrope]">Custom Domain</th>
+              <th className="px-4 sm:px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 font-[Manrope]">Status</th>
+              <th className="px-4 sm:px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 font-[Manrope]">Publication</th>
+              <th className="px-4 sm:px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 font-[Manrope] text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {!stores || stores.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 sm:px-8 py-8 text-center text-sm text-slate-400 font-[Manrope]">
+                  No stores registered on the platform.
+                </td>
+              </tr>
+            ) : (
+              stores.map((store) => {
+                const isSuspended = store.status === "suspended" || store.publishStatus === "SUSPENDED";
+                return (
+                  <tr key={store.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 sm:px-8 py-4 font-serif text-sm font-semibold text-slate-900">{store.name}</td>
+                    <td className="px-4 sm:px-8 py-4 text-xs font-semibold text-slate-500 font-[Manrope]">
+                      <code className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{store.slug || "-"}</code>
+                    </td>
+                    <td className="px-4 sm:px-8 py-4 text-xs text-slate-600 font-[Manrope]">{store.customDomain || "None"}</td>
+                    <td className="px-4 sm:px-8 py-4">
+                      {isSuspended ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold font-[Manrope] bg-red-50 text-red-700 border border-red-200">
+                          Suspended
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold font-[Manrope] bg-green-50 text-green-700 border border-green-200">
+                          Active
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 sm:px-8 py-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold font-[Manrope] border ${
+                        store.publishStatus === "PUBLISHED"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : store.publishStatus === "SUSPENDED"
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200"
+                      }`}>
+                        {store.publishStatus || (store.isPublished ? "PUBLISHED" : "DRAFT")}
+                      </span>
+                    </td>
+                    <td className="px-4 sm:px-8 py-4 text-right">
+                      {isSuspended ? (
+                        <button
+                          onClick={async () => {
+                            if (confirm(`Are you sure you want to unsuspend "${store.name}"?`)) {
+                              const res = await fetch(`/api/admin/stores/${store.id}/unsuspend`, { method: "POST" });
+                              if (res.ok) refetchStores();
+                            }
+                          }}
+                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold font-[Manrope] transition-colors shadow-sm"
+                        >
+                          Unsuspend
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            if (confirm(`Are you sure you want to suspend "${store.name}" and block all public access immediately?`)) {
+                              const res = await fetch(`/api/admin/stores/${store.id}/suspend`, { method: "POST" });
+                              if (res.ok) refetchStores();
+                            }
+                          }}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold font-[Manrope] transition-colors shadow-sm"
+                        >
+                          Suspend
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

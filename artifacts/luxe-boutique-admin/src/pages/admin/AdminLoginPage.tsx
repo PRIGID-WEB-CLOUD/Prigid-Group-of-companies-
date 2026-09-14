@@ -167,7 +167,7 @@ export default function AdminLoginPage() {
       }
 
       const actionCodeSettings = {
-        url: window.location.origin + "/admin/login",
+        url: window.location.origin + "/seller/login",
         handleCodeInApp: true,
       };
 
@@ -334,7 +334,7 @@ export default function AdminLoginPage() {
           <div className="space-y-6 max-w-[420px]">
             <div className="inline-flex items-center gap-2 bg-[#006c49]/15 border border-[#006c49]/30 px-4 py-2 rounded-full">
               <span className="material-symbols-outlined text-[#4edea3] text-[14px]">shield</span>
-              <span className="text-[#4edea3] text-[11px] font-bold tracking-[0.18em] uppercase">Admin Portal</span>
+              <span className="text-[#4edea3] text-[11px] font-bold tracking-[0.18em] uppercase">Seller Portal</span>
             </div>
             <h1 className="font-serif text-white text-[42px] leading-[1.1] font-semibold">Your store,<br />under control.</h1>
             <p className="text-white/50 text-[15px] leading-relaxed">Manage products, orders, customers, and marketing channels from a single command centre.</p>
@@ -377,7 +377,7 @@ export default function AdminLoginPage() {
             <span className="material-symbols-outlined text-white text-[18px]">storefront</span>
           </div>
           <span className="font-bold text-[13px] tracking-[0.22em] uppercase text-[#0a0f0d]">Luxe Boutique</span>
-          <span className="ml-auto text-[10px] font-bold tracking-widest uppercase text-[#006c49] bg-[#006c49]/10 px-3 py-1 rounded-full">Admin Portal</span>
+          <span className="ml-auto text-[10px] font-bold tracking-widest uppercase text-[#006c49] bg-[#006c49]/10 px-3 py-1 rounded-full">Seller Portal</span>
         </div>
 
         <div className="flex-1 flex items-center justify-center p-8">
@@ -397,7 +397,7 @@ export default function AdminLoginPage() {
             {/* Heading */}
             <div className="space-y-1.5">
               <h2 className="font-serif text-[30px] text-[#0a0f0d] font-semibold leading-tight">
-                {step === "email" ? "Admin Sign In" : step === "otp" ? "Enter your code" : "First Time Setup"}
+                {step === "email" ? "Seller Sign In" : step === "otp" ? "Enter your code" : "First Time Setup"}
               </h2>
               <p className="text-[#7c839b] text-sm">
                 {step === "email"
@@ -653,14 +653,14 @@ export default function AdminLoginPage() {
             </div>
 
             <p className="text-center text-[12px] text-[#7c839b]">
-              Contact your administrator if you need access.
+              Contact the store owner if you need access.
             </p>
           </div>
         </div>
 
         <div className="px-8 py-5 border-t border-slate-100 bg-white">
           <p className="text-center text-[11px] text-slate-400">
-            © {new Date().getFullYear()} Luxe Boutique — Admin Portal · All access is monitored and logged.
+            © {new Date().getFullYear()} Luxe Boutique — Seller Portal · All access is monitored and logged.
           </p>
         </div>
       </div>

@@ -2,13 +2,16 @@ import { Router } from "express";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { db, appSettingsTable } from "@workspace/db";
 import { addEvent } from "./channels";
+import { and, eq } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
 // Public GA4 config endpoint for storefront tracking injection
-router.get("/analytics/ga4/public-config", async (_req, res) => {
+router.get("/analytics/ga4/public-config", async (req: TenantRequest, res) => {
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const storeId = req.storeId!;
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
     const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
     return res.json({
@@ -25,9 +28,10 @@ router.get("/analytics/ga4/public-config", async (_req, res) => {
 // Admin-only management endpoints
 router.use("/analytics/ga4", requireAdmin);
 
-router.get("/analytics/ga4/config", async (_req, res) => {
+router.get("/analytics/ga4/config", async (req: TenantRequest, res) => {
   try {
-    const rows = await db.select().from(appSettingsTable);
+    const storeId = req.storeId!;
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
     const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
 
     return res.json({
@@ -44,8 +48,9 @@ router.get("/analytics/ga4/config", async (_req, res) => {
   }
 });
 
-router.post("/analytics/ga4/config", async (req, res) => {
+router.post("/analytics/ga4/config", async (req: TenantRequest, res) => {
   try {
+    const storeId = req.storeId!;
     const { measurementId, apiSecret, gtmContainerId, enhancedEcommerce, debugMode, enabled } = req.body;
 
     const entries = [
@@ -60,13 +65,15 @@ router.post("/analytics/ga4/config", async (req, res) => {
       entries.push(["ga4_api_secret", apiSecret]);
     }
 
+    const { randomUUID } = await import("crypto");
+
     for (const [key, value] of entries) {
       if (value !== undefined) {
         await db
           .insert(appSettingsTable)
-          .values({ key, value, updatedAt: new Date() })
+          .values({ id: randomUUID(), storeId, key, value, updatedAt: new Date() })
           .onConflictDoUpdate({
-            target: appSettingsTable.key,
+            target: [appSettingsTable.storeId, appSettingsTable.key],
             set: { value, updatedAt: new Date() },
           });
       }
@@ -76,7 +83,8 @@ router.post("/analytics/ga4/config", async (req, res) => {
       "ga4",
       "Settings updated",
       "Google Analytics 4 & Tag Manager connector configuration updated",
-      "info"
+      "info",
+      storeId
     );
 
     return res.json({ success: true, message: "Google Analytics 4 settings saved" });

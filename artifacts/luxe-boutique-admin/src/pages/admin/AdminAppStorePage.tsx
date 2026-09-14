@@ -243,7 +243,7 @@ const DEFAULT_APPS: AppItem[] = [
     ],
     permissions: [
       "Sync product titles, luxury imagery, and SKU inventory",
-      "Import orders placed within TikTok Shop directly into Boutique Admin",
+      "Import orders placed within TikTok Shop directly into Boutique Seller",
       "Update order dispatch fulfillment status and tracking numbers",
     ],
   },

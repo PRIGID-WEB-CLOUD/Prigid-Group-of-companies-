@@ -1,11 +1,12 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Response } from "express";
 import { db, productsTable, categoriesTable, blogPostsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const seoRouter = Router();
 
 // ── GET /robots.txt & /api/robots.txt ───────────────────────────────────────
-seoRouter.get(["/robots.txt", "/api/robots.txt"], (req: Request, res: Response) => {
+seoRouter.get(["/robots.txt", "/api/robots.txt"], (req: TenantRequest, res: Response) => {
   const host = req.get("host") || "luxeboutique.com";
   const protocol = req.protocol || "https";
   const baseUrl = `${protocol}://${host}`;
@@ -25,16 +26,27 @@ Sitemap: ${baseUrl}/sitemap.xml
 });
 
 // ── GET /sitemap.xml & /api/sitemap.xml ──────────────────────────────────────
-seoRouter.get(["/sitemap.xml", "/api/sitemap.xml"], async (req: Request, res: Response) => {
+seoRouter.get(["/sitemap.xml", "/api/sitemap.xml"], async (req: TenantRequest, res: Response) => {
   try {
+    const storeId = req.storeId; // Optional for public SEO routes, but can be resolved via host
     const host = req.get("host") || "luxeboutique.com";
     const protocol = req.protocol || "https";
     const baseUrl = `${protocol}://${host}`;
 
     // Fetch active items from database
-    const products = await db.select().from(productsTable).where(eq(productsTable.status, "ACTIVE")).catch(() => []);
-    const categories = await db.select().from(categoriesTable).catch(() => []);
-    const posts = await db.select().from(blogPostsTable).catch(() => []);
+    const productsQuery = db.select().from(productsTable).where(eq(productsTable.status, "ACTIVE"));
+    const categoriesQuery = db.select().from(categoriesTable);
+    const postsQuery = db.select().from(blogPostsTable);
+
+    if (storeId) {
+      productsQuery.where(and(eq(productsTable.status, "ACTIVE"), eq(productsTable.storeId, storeId)));
+      categoriesQuery.where(eq(categoriesTable.storeId, storeId));
+      postsQuery.where(eq(blogPostsTable.storeId, storeId));
+    }
+
+    const products = await productsQuery.catch(() => []);
+    const categories = await categoriesQuery.catch(() => []);
+    const posts = await postsQuery.catch(() => []);
 
     const staticPages = [
       "",

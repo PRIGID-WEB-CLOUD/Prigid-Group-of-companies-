@@ -25,12 +25,14 @@ import paypalRouter from "./paypal";
 import webhooksRouter from "./webhooks";
 import chatRouter from "./chat";
 import geolocationRouter from "./geolocation";
+import marketplaceRouter from "./marketplace";
 
 import paymentsRouter from "./payments";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(marketplaceRouter);
 router.use(geolocationRouter);
 router.use(webhooksRouter);
 router.use("/payments", paymentsRouter);

@@ -688,7 +688,7 @@ export default function AdminLayout({ children, sidebar = "main" }: AdminLayoutP
                 </div>
                 <div className="min-w-0">
                   <h1 className="text-base font-serif font-black tracking-widest text-slate-900 uppercase leading-tight">BOUTIQUE</h1>
-                  <p className="text-[10px] font-[Manrope] uppercase tracking-widest text-[#7c839b]">Admin Terminal</p>
+                  <p className="text-[10px] font-[Manrope] uppercase tracking-widest text-[#7c839b]">Seller Terminal</p>
                 </div>
               </Link>
               <button
@@ -832,7 +832,7 @@ export default function AdminLayout({ children, sidebar = "main" }: AdminLayoutP
 
           <div className="hidden md:flex items-center bg-slate-50 rounded-full px-6 py-3 border border-slate-200 w-96 shadow-sm focus-within:ring-2 focus-within:ring-[#006c49]/20 focus-within:border-[#006c49] transition-all">
             <MdSearch className="text-slate-400 text-xl" />
-            <input className="bg-transparent border-none outline-none text-base ml-3 w-full text-slate-700 placeholder-slate-400 font-[Manrope]" placeholder="Search boutique admin..." type="text" />
+            <input className="bg-transparent border-none outline-none text-base ml-3 w-full text-slate-700 placeholder-slate-400 font-[Manrope]" placeholder="Search boutique..." type="text" />
           </div>
         </div>
 
@@ -1123,14 +1123,14 @@ export default function AdminLayout({ children, sidebar = "main" }: AdminLayoutP
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-serif font-semibold text-[15px] text-[#0b1c30] truncate">
-                      {user?.name ?? "Administrator"}
+                      {user?.name ?? "Seller"}
                     </p>
                     <p className="font-[Manrope] text-[11px] text-[#7c839b] truncate mt-0.5">
                       {user?.email}
                     </p>
                     <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 bg-[#eff4ff] text-[#006c49] text-[9px] font-[Manrope] font-bold uppercase tracking-widest rounded-full">
                       <MdVerified className="text-[10px]" />
-                      {user?.role ?? "Admin"}
+                      {(user?.role === "Admin" || user?.role === "ADMIN") ? "Seller" : (user?.role === "SUPER_ADMIN" ? "Owner" : (user?.role ?? "Seller"))}
                     </span>
                   </div>
                 </div>

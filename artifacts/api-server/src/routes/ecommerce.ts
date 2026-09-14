@@ -14,6 +14,7 @@ import {
 import { getSessionUser } from "../middleware/requireAdmin";
 import { validate } from "../middleware/validate";
 import { z } from "zod";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 const CART_COOKIE = "luxe_cart";
@@ -52,7 +53,7 @@ async function sessionId(req: Request, res: Response) {
   return `anon:${token}`;
 }
 
-async function productSnapshot(productId: string) {
+async function productSnapshot(productId: string, storeId: string) {
   const [product] = await db.select({
     id: productsTable.id,
     name: productsTable.name,
@@ -61,7 +62,7 @@ async function productSnapshot(productId: string) {
     stock: productsTable.stock,
     trackQuantity: productsTable.trackQuantity,
     status: productsTable.status,
-  }).from(productsTable).where(eq(productsTable.id, productId)).limit(1);
+  }).from(productsTable).where(and(eq(productsTable.id, productId), eq(productsTable.storeId, storeId))).limit(1);
 
   if (product) return product;
 
@@ -74,19 +75,19 @@ async function productSnapshot(productId: string) {
     stock: productsTable.stock,
     trackQuantity: productsTable.trackQuantity,
     status: productsTable.status,
-  }).from(productsTable).where(eq(productsTable.eproloProductId, productId)).limit(1);
+  }).from(productsTable).where(and(eq(productsTable.eproloProductId, productId), eq(productsTable.storeId, storeId))).limit(1);
 
   return fallback ?? null;
 }
 
-async function cartItems(sid: string) {
+async function cartItems(sid: string, storeId: string) {
   return db.select().from(storeCartItemsTable)
-    .where(eq(storeCartItemsTable.sessionId, sid))
+    .where(and(eq(storeCartItemsTable.sessionId, sid), eq(storeCartItemsTable.storeId, storeId)))
     .orderBy(desc(storeCartItemsTable.updatedAt));
 }
 
-export async function cartPricing(sid: string) {
-  const items = await cartItems(sid);
+export async function cartPricing(sid: string, storeId: string) {
+  const items = await cartItems(sid, storeId);
   let subtotal = 0;
   const authoritativeItems: Array<{
     productId: string;
@@ -100,7 +101,7 @@ export async function cartPricing(sid: string) {
   }> = [];
 
   for (const item of items) {
-    const product = await productSnapshot(item.productId);
+    const product = await productSnapshot(item.productId, storeId);
     if (!product) return { error: "A product in your cart is no longer available." } as const;
     const itemMeta = (item.product || {}) as any;
     const variantMeta = itemMeta.selectedVariant;
@@ -132,9 +133,9 @@ function calculateDiscount(coupon: typeof couponsTable.$inferSelect, subtotal: n
     : Math.min(subtotal, Number(coupon.discountValue));
 }
 
-async function findUsableCoupon(code: string, subtotal: number) {
+async function findUsableCoupon(code: string, subtotal: number, storeId: string) {
   const [coupon] = await db.select().from(couponsTable)
-    .where(eq(couponsTable.code, code.trim().toUpperCase())).limit(1);
+    .where(and(eq(couponsTable.code, code.trim().toUpperCase()), eq(couponsTable.storeId, storeId))).limit(1);
   if (!coupon || !coupon.active || (coupon.expiresAt && coupon.expiresAt <= new Date())) {
     return { error: "Coupon code not found or expired." } as const;
   }
@@ -174,9 +175,10 @@ function recordCartDiagnostic(entry: Omit<CartDiagnosticEntry, "id" | "timestamp
   return fullEntry;
 }
 
-const getCartDebugHandler = async (req: Request, res: Response) => {
+const getCartDebugHandler = async (req: TenantRequest, res: Response) => {
   const sid = await sessionId(req, res);
-  const currentItems = await cartItems(sid);
+  const storeId = req.storeId!;
+  const currentItems = await cartItems(sid, storeId);
   return res.json({
     timestamp: new Date().toISOString(),
     activeSessionId: sid,
@@ -199,9 +201,10 @@ const getCartDebugHandler = async (req: Request, res: Response) => {
 router.get("/cart/debug", getCartDebugHandler);
 router.get("/cart/diagnostic", getCartDebugHandler);
 
-router.get("/cart", async (req, res) => {
+router.get("/cart", async (req: TenantRequest, res: Response) => {
   const sid = await sessionId(req, res);
-  const items = await cartItems(sid);
+  const storeId = req.storeId!;
+  const items = await cartItems(sid, storeId);
   recordCartDiagnostic({
     action: "FETCH_CART",
     sessionId: sid,
@@ -213,14 +216,15 @@ router.get("/cart", async (req, res) => {
   return res.json({ items });
 });
 
-router.post("/cart", validate(cartSchema), async (req, res) => {
+router.post("/cart", validate(cartSchema), async (req: TenantRequest, res: Response) => {
   const sid = await sessionId(req, res);
+  const storeId = req.storeId!;
   const { productId, quantity, variantId, selectedSize, selectedColor } = req.body as z.infer<typeof cartSchema>;
   const steps: Array<{ name: string; status: "PASS" | "FAIL" | "INFO"; details: string }> = [];
 
   steps.push({ name: "1. Payload Validation", status: "PASS", details: `productId: "${productId}", quantity: ${quantity}, variantId: "${variantId || ""}"` });
 
-  const baseProduct = await productSnapshot(productId);
+  const baseProduct = await productSnapshot(productId, storeId);
   if (!baseProduct) {
     steps.push({ name: "2. Product Snapshot", status: "FAIL", details: `Product ID "${productId}" not found in database.` });
     recordCartDiagnostic({
@@ -281,7 +285,7 @@ router.post("/cart", validate(cartSchema), async (req, res) => {
 
   // Find existing cart item for same product & variant
   const existingItems = await db.select().from(storeCartItemsTable)
-    .where(and(eq(storeCartItemsTable.sessionId, sid), eq(storeCartItemsTable.productId, targetProductId)));
+    .where(and(eq(storeCartItemsTable.sessionId, sid), eq(storeCartItemsTable.productId, targetProductId), eq(storeCartItemsTable.storeId, storeId)));
 
   const existing = existingItems.find(item => {
     const itemVariant = (item.product as any)?.selectedVariant?.id;
@@ -309,15 +313,15 @@ router.post("/cart", validate(cartSchema), async (req, res) => {
 
   if (existing) {
     await db.update(storeCartItemsTable).set({ quantity: nextQuantity, product: productBlob, updatedAt: new Date() })
-      .where(eq(storeCartItemsTable.id, existing.id));
+      .where(and(eq(storeCartItemsTable.id, existing.id), eq(storeCartItemsTable.storeId, storeId)));
     steps.push({ name: "4. Database Operation", status: "PASS", details: `Updated existing item ${existing.id} quantity to ${nextQuantity}` });
   } else {
     const newId = randomUUID();
-    await db.insert(storeCartItemsTable).values({ id: newId, sessionId: sid, productId: targetProductId, quantity, product: productBlob });
+    await db.insert(storeCartItemsTable).values({ id: newId, storeId, sessionId: sid, productId: targetProductId, quantity, product: productBlob });
     steps.push({ name: "4. Database Operation", status: "PASS", details: `Inserted new cart row ${newId} for session ${sid}` });
   }
 
-  const currentCart = await cartItems(sid);
+  const currentCart = await cartItems(sid, storeId);
   recordCartDiagnostic({
     action: "ADD_TO_CART",
     sessionId: sid,
@@ -330,87 +334,97 @@ router.post("/cart", validate(cartSchema), async (req, res) => {
   return res.status(existing ? 200 : 201).json({ items: currentCart });
 });
 
-async function updateCartItem(req: Request, res: Response) {
+async function updateCartItem(req: TenantRequest, res: Response) {
   const parsed = updateCartSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "quantity must be an integer from 0 to 100." });
   const sid = await sessionId(req, res);
+  const storeId = req.storeId!;
   const productId = productIdSchema.parse(req.params.productId);
   const [item] = await db.select().from(storeCartItemsTable)
-    .where(and(eq(storeCartItemsTable.sessionId, sid), eq(storeCartItemsTable.productId, productId))).limit(1);
+    .where(and(eq(storeCartItemsTable.sessionId, sid), eq(storeCartItemsTable.productId, productId), eq(storeCartItemsTable.storeId, storeId))).limit(1);
   if (!item) return res.status(404).json({ error: "Item not in cart" });
   if (parsed.data.quantity === 0) {
-    await db.delete(storeCartItemsTable).where(eq(storeCartItemsTable.id, item.id));
+    await db.delete(storeCartItemsTable).where(and(eq(storeCartItemsTable.id, item.id), eq(storeCartItemsTable.storeId, storeId)));
   } else {
-    const product = await productSnapshot(productId);
+    const product = await productSnapshot(productId, storeId);
     if (!product || product.status !== "ACTIVE") return res.status(400).json({ error: "Product is no longer available." });
     if (product.trackQuantity && parsed.data.quantity > product.stock) return res.status(400).json({ error: `Only ${product.stock} item(s) available.` });
     await db.update(storeCartItemsTable).set({ quantity: parsed.data.quantity, product, updatedAt: new Date() })
-      .where(eq(storeCartItemsTable.id, item.id));
+      .where(and(eq(storeCartItemsTable.id, item.id), eq(storeCartItemsTable.storeId, storeId)));
   }
-  return res.json({ items: await cartItems(sid) });
+  return res.json({ items: await cartItems(sid, storeId) });
 }
 
 router.put("/cart/:productId", updateCartItem);
 router.patch("/cart/:productId", updateCartItem);
 
-router.delete("/cart", async (req, res) => {
+router.delete("/cart", async (req: TenantRequest, res: Response) => {
   const sid = await sessionId(req, res);
-  await db.delete(storeCartItemsTable).where(eq(storeCartItemsTable.sessionId, sid));
+  const storeId = req.storeId!;
+  await db.delete(storeCartItemsTable).where(and(eq(storeCartItemsTable.sessionId, sid), eq(storeCartItemsTable.storeId, storeId)));
   return res.json({ items: [] });
 });
 
-router.delete("/cart/:productId", async (req, res) => {
+router.delete("/cart/:productId", async (req: TenantRequest, res: Response) => {
   const sid = await sessionId(req, res);
-  await db.delete(storeCartItemsTable).where(and(eq(storeCartItemsTable.sessionId, sid), eq(storeCartItemsTable.productId, req.params.productId as string)));
-  return res.json({ items: await cartItems(sid) });
+  const storeId = req.storeId!;
+  await db.delete(storeCartItemsTable).where(and(eq(storeCartItemsTable.sessionId, sid), eq(storeCartItemsTable.productId, req.params.productId as string), eq(storeCartItemsTable.storeId, storeId)));
+  return res.json({ items: await cartItems(sid, storeId) });
 });
 
-router.get("/wishlist", async (req, res) => {
+router.get("/wishlist", async (req: TenantRequest, res: Response) => {
   const sid = await sessionId(req, res);
-  return res.json(await db.select().from(storeWishlistItemsTable).where(eq(storeWishlistItemsTable.sessionId, sid)).orderBy(desc(storeWishlistItemsTable.createdAt)));
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(storeWishlistItemsTable).where(and(eq(storeWishlistItemsTable.sessionId, sid), eq(storeWishlistItemsTable.storeId, storeId))).orderBy(desc(storeWishlistItemsTable.createdAt)));
 });
 
-router.post("/wishlist", validate(wishlistSchema), async (req, res) => {
+router.post("/wishlist", validate(wishlistSchema), async (req: TenantRequest, res: Response) => {
   const sid = await sessionId(req, res);
+  const storeId = req.storeId!;
   const { productId } = req.body as z.infer<typeof wishlistSchema>;
-  const product = await productSnapshot(productId);
+  const product = await productSnapshot(productId, storeId);
   if (!product) return res.status(404).json({ error: "Product not found" });
-  const [existing] = await db.select().from(storeWishlistItemsTable).where(and(eq(storeWishlistItemsTable.sessionId, sid), eq(storeWishlistItemsTable.productId, productId))).limit(1);
+  const [existing] = await db.select().from(storeWishlistItemsTable).where(and(eq(storeWishlistItemsTable.sessionId, sid), eq(storeWishlistItemsTable.productId, productId), eq(storeWishlistItemsTable.storeId, storeId))).limit(1);
   if (existing) return res.json({ ok: true, alreadyWishlisted: true, item: existing });
-  const [item] = await db.insert(storeWishlistItemsTable).values({ id: randomUUID(), sessionId: sid, productId, product }).returning();
+  const [item] = await db.insert(storeWishlistItemsTable).values({ id: randomUUID(), storeId, sessionId: sid, productId, product }).returning();
   return res.status(201).json(item);
 });
 
-router.delete("/wishlist/:productId", async (req, res) => {
-  await db.delete(storeWishlistItemsTable).where(and(eq(storeWishlistItemsTable.sessionId, await sessionId(req, res)), eq(storeWishlistItemsTable.productId, req.params.productId as string)));
+router.delete("/wishlist/:productId", async (req: TenantRequest, res: Response) => {
+  const sid = await sessionId(req, res);
+  const storeId = req.storeId!;
+  await db.delete(storeWishlistItemsTable).where(and(eq(storeWishlistItemsTable.sessionId, sid), eq(storeWishlistItemsTable.productId, req.params.productId as string), eq(storeWishlistItemsTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
-async function validateCouponForCart(req: Request, res: Response) {
+async function validateCouponForCart(req: TenantRequest, res: Response) {
   const parsed = couponSchema.safeParse(req.body);
   if (!parsed.success) return { response: res.status(400).json({ error: "A valid coupon code is required." }) } as const;
-  const pricing = await cartPricing(await sessionId(req, res));
+  const storeId = req.storeId!;
+  const pricing = await cartPricing(await sessionId(req, res), storeId);
   if ("error" in pricing) return { response: res.status(400).json({ error: pricing.error }) } as const;
-  const result = await findUsableCoupon(parsed.data.code, pricing.subtotal);
+  const result = await findUsableCoupon(parsed.data.code, pricing.subtotal, storeId);
   if ("error" in result) return { response: res.status(400).json({ error: result.error }) } as const;
   return { ...result, subtotal: pricing.subtotal } as const;
 }
 
-router.post("/coupons/validate", async (req, res) => {
+router.post("/coupons/validate", async (req: TenantRequest, res: Response) => {
   const result = await validateCouponForCart(req, res);
   if ("response" in result) return result.response;
   const { coupon, discount } = result;
   return res.json({ code: coupon.code, type: coupon.discountType, value: coupon.discountValue, discount, description: coupon.description });
 });
 
-router.post("/coupons/redeem", async (req, res) => {
+router.post("/coupons/redeem", async (req: TenantRequest, res: Response) => {
   const result = await validateCouponForCart(req, res);
   if ("response" in result) return result.response;
   const { coupon, discount } = result;
+  const storeId = req.storeId!;
   const [redeemed] = await db.update(couponsTable)
     .set({ usedCount: sql`${couponsTable.usedCount} + 1`, updatedAt: new Date() })
     .where(and(
       eq(couponsTable.id, coupon.id),
+      eq(couponsTable.storeId, storeId),
       eq(couponsTable.active, true),
       or(isNull(couponsTable.expiresAt), gt(couponsTable.expiresAt, new Date())),
       or(isNull(couponsTable.maxUses), lt(couponsTable.usedCount, couponsTable.maxUses)),
@@ -419,30 +433,33 @@ router.post("/coupons/redeem", async (req, res) => {
   return res.json({ ok: true, code: redeemed.code, discount });
 });
 
-router.get("/reviews", async (req, res) => {
+router.get("/reviews", async (req: TenantRequest, res: Response) => {
   const productId = req.query.productId as string | undefined;
+  const storeId = req.storeId!;
   const rows = productId
-    ? await db.select().from(reviewsTable).where(eq(reviewsTable.productId, productId)).orderBy(desc(reviewsTable.createdAt))
-    : await db.select().from(reviewsTable).orderBy(desc(reviewsTable.createdAt));
+    ? await db.select().from(reviewsTable).where(and(eq(reviewsTable.productId, productId), eq(reviewsTable.storeId, storeId))).orderBy(desc(reviewsTable.createdAt))
+    : await db.select().from(reviewsTable).where(eq(reviewsTable.storeId, storeId)).orderBy(desc(reviewsTable.createdAt));
   return res.json(rows);
 });
 
-router.post("/reviews", async (req, res) => {
+router.post("/reviews", async (req: TenantRequest, res: Response) => {
   const user = await getSessionUser(req);
   if (!user) return res.status(401).json({ error: "Sign in to write a review." });
+  const storeId = req.storeId!;
   const parsed = reviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Product, rating, and a review of 1–2000 characters are required." });
-  const product = await productSnapshot(parsed.data.productId);
+  const product = await productSnapshot(parsed.data.productId, storeId);
   if (!product) return res.status(404).json({ error: "Product not found" });
   const [purchased] = await db.select({ id: ordersTable.id }).from(ordersTable)
     .where(and(
       eq(ordersTable.paymentStatus, "PAID"),
+      eq(ordersTable.storeId, storeId),
       or(eq(ordersTable.customerId, user.id), eq(ordersTable.customerEmail, user.email)),
       sql`${ordersTable.items} @> ${JSON.stringify([{ productId: parsed.data.productId }])}::jsonb`,
     )).limit(1);
   if (!purchased) return res.status(403).json({ error: "You can review products only after a verified purchase." });
   const [review] = await db.insert(reviewsTable).values({
-    id: randomUUID(), productId: parsed.data.productId, userId: user.id, rating: parsed.data.rating,
+    id: randomUUID(), storeId, productId: parsed.data.productId, userId: user.id, rating: parsed.data.rating,
     comment: parsed.data.comment, authorName: user.name,
   }).returning();
   return res.status(201).json(review);

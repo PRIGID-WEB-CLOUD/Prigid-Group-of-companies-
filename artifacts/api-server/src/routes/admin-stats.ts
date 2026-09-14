@@ -1,7 +1,8 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { db, ordersTable, productsTable, categoriesTable, usersTable } from "@workspace/db";
-import { eq, desc, sql, or } from "drizzle-orm";
+import { and, eq, desc, sql, or } from "drizzle-orm";
 import { getSessionUser } from "../middleware/requireAdmin";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
@@ -12,19 +13,20 @@ const router = Router();
  *  - SUPER_ADMIN → full financials + customer + team panels
  *  - ADMIN       → operational snapshot (orders queue + catalog health)
  */
-router.get("/admin/stats", async (req, res) => {
+router.get("/admin/stats", async (req: TenantRequest, res: Response) => {
   const user = await getSessionUser(req);
   if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
     return res.status(403).json({ error: "Admin access required." });
   }
 
+  const storeId = req.storeId!;
   const isSuperAdmin = user.role === "SUPER_ADMIN";
 
   // ── Shared: orders + products ──────────────────────────────────────────────
 
   const [orders, products] = await Promise.all([
-    db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt)),
-    db.select().from(productsTable),
+    db.select().from(ordersTable).where(eq(ordersTable.storeId, storeId)).orderBy(desc(ordersTable.createdAt)),
+    db.select().from(productsTable).where(eq(productsTable.storeId, storeId)),
   ]);
 
   const totalRevenue   = orders.reduce((s, o) => s + (o.total ?? 0), 0);
@@ -78,12 +80,15 @@ router.get("/admin/stats", async (req, res) => {
   const [{ totalUsers }] = await db
     .select({ totalUsers: sql<number>`count(*)::int` })
     .from(usersTable)
-    .where(eq(usersTable.role, "CUSTOMER"));
+    .where(and(eq(usersTable.storeId, storeId), eq(usersTable.role, "CUSTOMER")));
 
   const [{ adminCount }] = await db
     .select({ adminCount: sql<number>`count(*)::int` })
     .from(usersTable)
-    .where(or(eq(usersTable.role, "ADMIN"), eq(usersTable.role, "SUPER_ADMIN")));
+    .where(and(
+      eq(usersTable.storeId, storeId),
+      or(eq(usersTable.role, "ADMIN"), eq(usersTable.role, "SUPER_ADMIN"))
+    ));
 
   // Top products by appearance in orders (via items jsonb)
   const productSales: Record<string, { name: string; revenue: number; units: number }> = {};
@@ -99,7 +104,7 @@ router.get("/admin/stats", async (req, res) => {
     .slice(0, 5);
 
   // Categories count
-  const categories = await db.select().from(categoriesTable);
+  const categories = await db.select().from(categoriesTable).where(eq(categoriesTable.storeId, storeId));
 
   return res.json({
     ...base,

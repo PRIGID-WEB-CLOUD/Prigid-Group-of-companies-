@@ -100,12 +100,12 @@ export function buildWhatsAppLowStockAlertMessage(options: {
 
 // ── Dispatcher Function ────────────────────────────────────────────────────
 
-export async function sendWhatsAppNotification(toPhoneNumber: string, textContent: string): Promise<boolean> {
-  const creds = await getChannelCredentials("whatsapp");
+export async function sendWhatsAppNotification(toPhoneNumber: string, textContent: string, storeId: string): Promise<boolean> {
+  const creds = await getChannelCredentials("whatsapp", storeId);
   const phoneNumberId = creds["phone_number_id"];
   const token = creds["system_access_token"];
 
-  console.log(`[WhatsApp Service] Dispatched to +${toPhoneNumber}:\n${textContent}`);
+  console.log(`[WhatsApp Service] [Store: ${storeId}] Dispatched to +${toPhoneNumber}:\n${textContent}`);
 
   if (!phoneNumberId || !token || !toPhoneNumber) {
     return false;
@@ -125,11 +125,11 @@ export async function sendWhatsAppNotification(toPhoneNumber: string, textConten
     });
     const data = (await res.json()) as Record<string, unknown>;
     if (res.ok && !data["error"]) {
-      addEvent("whatsapp", `Notification sent to +${cleanPhone}`, textContent.slice(0, 60) + "…", "sync");
+      addEvent("whatsapp", `Notification sent to +${cleanPhone}`, textContent.slice(0, 60) + "…", "sync", storeId);
       return true;
     }
   } catch (err) {
-    console.error("[WhatsApp Send Error]:", err);
+    console.error(`[WhatsApp Send Error] [Store: ${storeId}]:`, err);
   }
   return false;
 }

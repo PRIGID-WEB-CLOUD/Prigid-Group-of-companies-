@@ -1,10 +1,11 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { db, appSettingsTable } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { and, inArray } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router: IRouter = Router();
 
-async function getGoogleMapsApiKey(): Promise<string> {
+async function getGoogleMapsApiKey(storeId?: string): Promise<string> {
   if (process.env.GOOGLE_MAPS_API_KEY?.trim()) {
     return process.env.GOOGLE_MAPS_API_KEY.trim();
   }
@@ -15,10 +16,16 @@ async function getGoogleMapsApiKey(): Promise<string> {
     return process.env.VITE_GOOGLE_MAPS_API_KEY.trim();
   }
   try {
-    const rows = await db
+    const query = db
       .select()
-      .from(appSettingsTable)
-      .where(inArray(appSettingsTable.key, ["google_maps_api_key", "google_maps_key"]));
+      .from(appSettingsTable);
+    
+    const conditions = [inArray(appSettingsTable.key, ["google_maps_api_key", "google_maps_key"])];
+    if (storeId) {
+      conditions.push(inArray(appSettingsTable.storeId, [storeId, "global"]));
+    }
+    
+    const rows = await query.where(and(...conditions));
     const match = rows.find((r) => r.value && r.value.trim().length > 0);
     if (match) return match.value.trim();
   } catch (err) {
@@ -77,7 +84,8 @@ function extractPostalCodeFromString(text: string, countryCode?: string): string
 /**
  * Reverse Geocode Coordinates (lat, lng) to Address
  */
-router.get("/geolocation/reverse-geocode", async (req: Request, res: Response) => {
+router.get("/geolocation/reverse-geocode", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId;
   const latStr = req.query.lat as string;
   const lngStr = req.query.lng as string;
 
@@ -92,7 +100,7 @@ router.get("/geolocation/reverse-geocode", async (req: Request, res: Response) =
     return res.status(400).json({ error: "Invalid latitude or longitude coordinate values." });
   }
 
-  const apiKey = await getGoogleMapsApiKey();
+  const apiKey = await getGoogleMapsApiKey(storeId);
 
   // 1. Try Google Maps Geocoding API if key is present
   if (apiKey) {
@@ -324,13 +332,14 @@ router.get("/geolocation/reverse-geocode", async (req: Request, res: Response) =
 /**
  * Address Search & Forward Geocoding
  */
-router.get("/geolocation/search", async (req: Request, res: Response) => {
+router.get("/geolocation/search", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId;
   const query = (req.query.q as string)?.trim();
   if (!query || query.length < 2) {
     return res.json({ success: true, data: [] });
   }
 
-  const apiKey = await getGoogleMapsApiKey();
+  const apiKey = await getGoogleMapsApiKey(storeId);
 
   if (apiKey) {
     try {
@@ -382,8 +391,9 @@ router.get("/geolocation/search", async (req: Request, res: Response) => {
 /**
  * Public Geolocation Configuration Status
  */
-router.get("/geolocation/config", async (_req: Request, res: Response) => {
-  const key = await getGoogleMapsApiKey();
+router.get("/geolocation/config", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId;
+  const key = await getGoogleMapsApiKey(storeId);
   return res.json({
     googleMapsConfigured: Boolean(key),
     hasKey: Boolean(key),

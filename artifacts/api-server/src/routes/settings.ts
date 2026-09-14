@@ -1,12 +1,13 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { createHash, randomBytes, randomUUID } from "crypto";
-import { desc, eq, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middleware/requireAdmin";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { requireAdmin, getSessionUser } from "../middleware/requireAdmin";
 import { eprolo } from "../services/eprolo";
 import { sendEmail, loadBrandingCache } from "../services/mailer";
-import { db, apiKeysTable, appSettingsTable, providerPluginsTable } from "@workspace/db";
+import { db, apiKeysTable, appSettingsTable, providerPluginsTable, storesTable } from "@workspace/db";
 import { encryptCredential, decryptCredential, isEncryptedCredential } from "../services/credentialVault";
 import { testCloudinaryConnection } from "../services/cloudinary";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 router.use("/settings", requireAdmin);
@@ -26,8 +27,8 @@ const PROVIDER_CATALOG = [
   { name: "dhl", label: "DHL Express", description: "International courier and automated express shipping." },
 ];
 
-async function readSettings() {
-  const rows = await db.select().from(appSettingsTable);
+async function readSettings(storeId: string) {
+  const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
   return { ...DEFAULT_SETTINGS, ...Object.fromEntries(rows.map((row) => [row.key, row.value])) };
 }
 
@@ -44,13 +45,138 @@ function configured(settings: Record<string, string>) {
   };
 }
 
-router.get("/settings", async (_req, res) => {
-  const settings = await readSettings();
+router.get("/settings", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const settings = await readSettings(storeId);
   return res.json({ settings: safeSettings(settings), status: configured(settings) });
 });
 
-router.get("/settings/google-config", async (_req, res) => {
-  const rows = await db.select().from(appSettingsTable).where(inArray(appSettingsTable.key, ["google_client_id", "google_client_secret"]));
+router.get("/settings/tenant-domain", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  try {
+    const [store] = await db.select().from(storesTable).where(eq(storesTable.id, storeId)).limit(1);
+    if (!store) return res.status(404).json({ error: "Store not found." });
+    return res.json({ slug: store.slug, customDomain: store.customDomain || "", isPublished: store.isPublished ?? false });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "Failed to fetch domain details." });
+  }
+});
+
+router.put("/settings/tenant-domain", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const { slug, customDomain, isPublished } = req.body as { slug?: string; customDomain?: string; isPublished?: boolean };
+  
+  if (slug !== undefined && !slug.trim()) {
+    return res.status(400).json({ error: "Subdomain slug cannot be empty." });
+  }
+
+  try {
+    const updatePayload: Record<string, any> = {};
+    if (slug !== undefined) {
+      const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
+      // Verify uniqueness of slug if changing
+      const [existingSlug] = await db.select().from(storesTable).where(and(eq(storesTable.slug, cleanSlug), eq(storesTable.id, storeId)));
+      if (!existingSlug) {
+        const [duplicateSlug] = await db.select().from(storesTable).where(eq(storesTable.slug, cleanSlug)).limit(1);
+        if (duplicateSlug) {
+          return res.status(400).json({ error: "This subdomain is already taken by another store." });
+        }
+      }
+      updatePayload.slug = cleanSlug;
+    }
+
+    if (customDomain !== undefined) {
+      const cleanDomain = customDomain.trim().toLowerCase() || null;
+      if (cleanDomain) {
+        const [existingDomain] = await db.select().from(storesTable).where(and(eq(storesTable.customDomain, cleanDomain), eq(storesTable.id, storeId)));
+        if (!existingDomain) {
+          const [duplicateDomain] = await db.select().from(storesTable).where(eq(storesTable.customDomain, cleanDomain)).limit(1);
+          if (duplicateDomain) {
+            return res.status(400).json({ error: "This custom domain is already registered to another store." });
+          }
+        }
+      }
+      updatePayload.customDomain = cleanDomain;
+    }
+
+    if (isPublished !== undefined) {
+      if (isPublished) {
+        const [currentStore] = await db.select().from(storesTable).where(eq(storesTable.id, storeId)).limit(1);
+        if (currentStore && (currentStore.status === "suspended" || currentStore.publishStatus === "SUSPENDED")) {
+          return res.status(403).json({ error: "This store has been suspended by SaaS administration and cannot be published." });
+        }
+        updatePayload.publishStatus = "PUBLISHED";
+        updatePayload.isPublished = true;
+      } else {
+        updatePayload.publishStatus = "UNPUBLISHED";
+        updatePayload.isPublished = false;
+      }
+    }
+
+    await db.update(storesTable).set(updatePayload).where(eq(storesTable.id, storeId));
+    return res.json({ ok: true, slug: updatePayload.slug, customDomain: updatePayload.customDomain, isPublished: updatePayload.isPublished });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "Failed to save domain details." });
+  }
+});
+
+router.get("/admin/stores", async (req: TenantRequest, res: Response) => {
+  try {
+    const user = await getSessionUser(req).catch(() => null);
+    if (!user || user.role !== "SUPER_ADMIN") {
+      return res.status(403).json({ error: "Platform administration access required." });
+    }
+
+    const stores = await db.select().from(storesTable);
+    return res.json(stores);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to list platform stores." });
+  }
+});
+
+router.post("/admin/stores/:id/suspend", async (req: TenantRequest, res: Response) => {
+  const { id } = req.params;
+  try {
+    const user = await getSessionUser(req).catch(() => null);
+    if (!user || user.role !== "SUPER_ADMIN") {
+      return res.status(403).json({ error: "Platform administration access required." });
+    }
+
+    await db.update(storesTable).set({
+      status: "suspended",
+      publishStatus: "SUSPENDED",
+      isPublished: false,
+    }).where(eq(storesTable.id, id as string));
+
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to suspend store." });
+  }
+});
+
+router.post("/admin/stores/:id/unsuspend", async (req: TenantRequest, res: Response) => {
+  const { id } = req.params;
+  try {
+    const user = await getSessionUser(req).catch(() => null);
+    if (!user || user.role !== "SUPER_ADMIN") {
+      return res.status(403).json({ error: "Platform administration access required." });
+    }
+
+    await db.update(storesTable).set({
+      status: "active",
+      publishStatus: "UNPUBLISHED",
+      isPublished: false,
+    }).where(eq(storesTable.id, id as string));
+
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to unsuspend store." });
+  }
+});
+
+router.get("/settings/google-config", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const rows = await db.select().from(appSettingsTable).where(and(eq(appSettingsTable.storeId, storeId), inArray(appSettingsTable.key, ["google_client_id", "google_client_secret"])));
   const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   
   return res.json({
@@ -59,23 +185,25 @@ router.get("/settings/google-config", async (_req, res) => {
   });
 });
 
-router.put("/settings", async (req, res) => {
+router.put("/settings", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   for (const [key, value] of Object.entries(req.body as Record<string, unknown>)) {
     if (typeof value !== "string") continue;
     if (SECRET_SETTINGS.has(key) && value === "●●●●●●●●") continue;
     const storedValue = SECRET_SETTINGS.has(key) && value
       ? (isEncryptedCredential(value) ? value : encryptCredential(value))
       : value;
-    await db.insert(appSettingsTable).values({ key, value: storedValue, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: storedValue, updatedAt: new Date() } });
+    await db.insert(appSettingsTable).values({ id: randomUUID(), storeId, key, value: storedValue, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: [appSettingsTable.storeId, appSettingsTable.key], set: { value: storedValue, updatedAt: new Date() } });
   }
-  const settings = await readSettings();
-  await loadBrandingCache().catch((err) => console.error("Failed to refresh branding cache:", err));
+  const settings = await readSettings(storeId);
+  await loadBrandingCache(storeId).catch((err) => console.error("Failed to refresh branding cache:", err));
   return res.json({ settings: safeSettings(settings), status: configured(settings) });
 });
 
-router.post("/settings/test/email", async (_req, res) => {
-  const settings = await readSettings();
+router.post("/settings/test/email", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const settings = await readSettings(storeId);
   const sentTo = settings.store_email || "admin@luxeboutique.com";
   try {
     await sendEmail({
@@ -83,6 +211,7 @@ router.post("/settings/test/email", async (_req, res) => {
       subject: "Luxe Boutique Notification Test",
       text: "Your Luxe Boutique notification settings are operational.",
       html: "<p>Your Luxe Boutique notification settings are operational.</p>",
+      storeId,
     });
     return res.json({ ok: true, sentTo });
   } catch (error) {
@@ -91,9 +220,10 @@ router.post("/settings/test/email", async (_req, res) => {
   }
 });
 
-router.post("/settings/test/cloudinary", async (_req, res) => {
+router.post("/settings/test/cloudinary", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   try {
-    const result = await testCloudinaryConnection();
+    const result = await testCloudinaryConnection(storeId);
     return res.json({
       ok: true,
       message: `Cloudinary connected successfully to cloud '${result.cloudName}'. Upload adapter is active.`,
@@ -117,30 +247,34 @@ function safeKey(key: typeof apiKeysTable.$inferSelect) {
   return safe;
 }
 
-router.get("/apikeys", async (_req, res) => {
-  const keys = await db.select().from(apiKeysTable).orderBy(desc(apiKeysTable.createdAt));
+router.get("/apikeys", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const keys = await db.select().from(apiKeysTable).where(eq(apiKeysTable.storeId, storeId)).orderBy(desc(apiKeysTable.createdAt));
   return res.json(keys.map(safeKey));
 });
 
-router.post("/apikeys", async (req, res) => {
+router.post("/apikeys", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { name } = req.body as { name?: string };
   if (!name) return res.status(400).json({ error: "name is required." });
   const { rawKey, keyPrefix } = makeKey();
   const [key] = await db.insert(apiKeysTable).values({
-    id: randomUUID(), name, keyHash: createHash("sha256").update(rawKey).digest("hex"), keyPrefix,
+    id: randomUUID(), storeId, name, keyHash: createHash("sha256").update(rawKey).digest("hex"), keyPrefix,
   }).returning();
   return res.status(201).json({ ...safeKey(key), rawKey });
 });
 
-router.delete("/apikeys/:id", async (req, res) => {
+router.delete("/apikeys/:id", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const [key] = await db.update(apiKeysTable)
-    .set({ revokedAt: new Date() }).where(eq(apiKeysTable.id, req.params.id as string)).returning();
+    .set({ revokedAt: new Date() }).where(and(eq(apiKeysTable.id, req.params.id as string), eq(apiKeysTable.storeId, storeId))).returning();
   if (!key) return res.status(404).json({ error: "API key not found." });
   return res.json({ ok: true });
 });
 
-router.delete("/apikeys/:id/permanent", async (req, res) => {
-  await db.delete(apiKeysTable).where(eq(apiKeysTable.id, req.params.id as string));
+router.delete("/apikeys/:id/permanent", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  await db.delete(apiKeysTable).where(and(eq(apiKeysTable.id, req.params.id as string), eq(apiKeysTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
@@ -154,29 +288,31 @@ function safeProvider(provider: typeof providerPluginsTable.$inferSelect) {
   };
 }
 
-async function getProvider(name: string) {
+async function getProvider(name: string, storeId: string) {
   const [existing] = await db.select().from(providerPluginsTable)
-    .where(eq(providerPluginsTable.name, name)).limit(1);
+    .where(and(eq(providerPluginsTable.name, name), eq(providerPluginsTable.storeId, storeId))).limit(1);
   if (existing) return existing;
   const metadata = PROVIDER_CATALOG.find((provider) => provider.name === name);
   if (!metadata) return null;
   const [created] = await db.insert(providerPluginsTable).values({
-    id: randomUUID(), ...metadata,
+    id: randomUUID(), storeId, ...metadata,
   }).returning();
   return created;
 }
 
-router.get("/providers", async (_req, res) => {
-  const providers = await Promise.all(PROVIDER_CATALOG.map((provider) => getProvider(provider.name)));
+router.get("/providers", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const providers = await Promise.all(PROVIDER_CATALOG.map((provider) => getProvider(provider.name, storeId)));
   return res.json(providers.filter(Boolean).map((provider) => safeProvider(provider!)));
 });
 
-router.put("/providers/:name", async (req, res) => {
-  const provider = await getProvider(req.params.name as string);
+router.put("/providers/:name", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const provider = await getProvider(req.params.name as string, storeId);
   if (!provider) return res.status(404).json({ error: "Provider not found" });
   const raw = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
-  for (const key of ["apiKey", "apiSecret", "storeId", "enabled"]) {
+  for (const key of ["apiKey", "apiSecret", "enabled"]) {
     if (!(key in raw)) continue;
     const value = raw[key];
     if ((key === "apiKey" || key === "apiSecret") && typeof value === "string") {
@@ -187,12 +323,13 @@ router.put("/providers/:name", async (req, res) => {
     }
   }
   const [updated] = await db.update(providerPluginsTable).set(updates)
-    .where(eq(providerPluginsTable.id, provider.id)).returning();
+    .where(and(eq(providerPluginsTable.id, provider.id), eq(providerPluginsTable.storeId, storeId))).returning();
   return res.json(safeProvider(updated));
 });
 
-router.post("/providers/:name/connect", async (req, res) => {
-  const provider = await getProvider(req.params.name as string);
+router.post("/providers/:name/connect", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const provider = await getProvider(req.params.name as string, storeId);
   if (!provider) return res.status(404).json({ error: "Provider not found" });
   if (!provider.apiKey) return res.status(400).json({ connected: false, error: "No API key saved — add your key first." });
   const apiKey = decryptCredential(provider.apiKey);
@@ -204,7 +341,7 @@ router.post("/providers/:name/connect", async (req, res) => {
     await db.update(providerPluginsTable).set({
       connected: result.ok, lastError: result.ok ? null : result.message,
       lastSyncAt: result.ok ? new Date() : provider.lastSyncAt, updatedAt: new Date(),
-    }).where(eq(providerPluginsTable.id, provider.id));
+    }).where(and(eq(providerPluginsTable.id, provider.id), eq(providerPluginsTable.storeId, storeId)));
     return res.json({ connected: result.ok, message: result.message });
   }
 
@@ -224,26 +361,23 @@ router.post("/providers/:name/connect", async (req, res) => {
 
   const [updated] = await db.update(providerPluginsTable).set({
     connected: true, lastError: null, lastSyncAt: new Date(), updatedAt: new Date(),
-  }).where(eq(providerPluginsTable.id, provider.id)).returning();
+  }).where(and(eq(providerPluginsTable.id, provider.id), eq(providerPluginsTable.storeId, storeId))).returning();
   return res.json({ connected: true, provider: safeProvider(updated) });
 });
 
-router.post("/providers/:name/disconnect", async (req, res) => {
+router.post("/providers/:name/disconnect", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const name = req.params.name as string;
 
   if (name === "google") {
-    // If google disconnect is requested, we will delete the app_settings config keys
-    // This removes the Google credentials globally as requested
     await db.delete(appSettingsTable)
-      .where(inArray(appSettingsTable.key, ["google_client_id", "google_client_secret"]));
-    // Note: The frontend checks the process.env as fallback. If they set it in ENV, they must unset it there.
-    // For now we just return ok.
+      .where(and(eq(appSettingsTable.storeId, storeId), inArray(appSettingsTable.key, ["google_client_id", "google_client_secret"])));
     return res.json({ ok: true });
   }
 
-  const provider = await getProvider(name);
+  const provider = await getProvider(name, storeId);
   if (provider) await db.update(providerPluginsTable)
-    .set({ connected: false, updatedAt: new Date() }).where(eq(providerPluginsTable.id, provider.id));
+    .set({ connected: false, updatedAt: new Date() }).where(and(eq(providerPluginsTable.id, provider.id), eq(providerPluginsTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 

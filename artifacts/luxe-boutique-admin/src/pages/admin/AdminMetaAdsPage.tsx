@@ -813,81 +813,20 @@ export default function AdminMetaAdsPage() {
         {/* Credentials Tab */}
         {tab === "credentials" && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900 mb-1">Meta Ads Credentials</h2>
-              <p className="text-sm text-slate-500">
-                Connect your Meta Ad Account for live campaign reporting, or link via Meta Business Suite.
-              </p>
-            </div>
-
-            {metaStatus?.connected || creds.source === "meta_business" ? (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <SiMeta className="text-2xl text-[#0668E1] shrink-0" />
-                  <div>
-                    <p className="text-xs font-serif font-bold text-emerald-900 flex items-center gap-1.5">
-                      <MdCheckCircle className="text-emerald-600 text-sm" />
-                      Auto-Configured via Meta Business Suite
-                    </p>
-                    <p className="text-[11px] font-[Manrope] text-emerald-700 mt-0.5">
-                      This Ad Account was automatically discovered and linked from your Facebook for Business login.
-                    </p>
-                  </div>
+            <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex items-center gap-3 mb-4">
+                <MdKey className="text-2xl text-slate-400" />
+                <div>
+                  <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                  <p className="text-xs font-[Manrope] text-slate-500 mt-1">Manual entry of Meta Ads credentials is disabled in this environment.</p>
                 </div>
-                <Link
-                  href="/channels/meta-business"
-                  className="px-3 py-1 bg-white border border-emerald-300 text-emerald-800 text-xs font-bold rounded-lg no-underline hover:bg-emerald-100 whitespace-nowrap"
-                >
-                  Manage Suite
-                </Link>
               </div>
-            ) : (
-              <div className="p-4 bg-[#eff4ff] border border-blue-200 rounded-xl flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <SiMeta className="text-2xl text-[#0668E1] shrink-0" />
-                  <div>
-                    <p className="text-xs font-serif font-bold text-[#0b1c30]">
-                      Link Ad Account via Meta Business Suite?
-                    </p>
-                    <p className="text-[11px] font-[Manrope] text-[#7c839b] mt-0.5">
-                      Auto-link your Ad Account in 1 click without manually copying IDs.
-                    </p>
-                  </div>
-                </div>
-                <Link
-                  href="/channels/meta-business"
-                  className="px-3.5 py-1.5 bg-[#0668E1] hover:bg-blue-700 text-white font-[Manrope] font-bold text-xs rounded-lg transition-colors whitespace-nowrap no-underline"
-                >
-                  Connect Meta Business
-                </Link>
-              </div>
-            )}
-
-            <div className="space-y-4 max-w-lg pt-2">
-              <CredField
-                label="Ad Account ID (numeric, without act_)"
-                hint="1234567890"
-                value={creds.ad_account_id}
-                onChange={(v) => setCreds((p) => ({ ...p, ad_account_id: v }))}
-              />
-              <CredField
-                label="Access Token (with ads_management, ads_read)"
-                hint="EAABsbCS..."
-                value={creds.page_access_token}
-                onChange={(v) => setCreds((p) => ({ ...p, page_access_token: v }))}
-                type="password"
-              />
+              <ul className="space-y-2 text-xs font-[Manrope] text-slate-600 list-disc list-inside">
+                <li><span className="font-bold text-slate-800">Ad Account ID</span></li>
+                <li><span className="font-bold text-slate-800">Access Token</span></li>
+              </ul>
             </div>
-            <div className="mt-5 flex items-center gap-3">
-              <button
-                onClick={saveCreds}
-                disabled={saving}
-                className="px-5 py-2 bg-[#006c49] text-white text-sm font-semibold rounded-lg hover:bg-[#005a3d] disabled:opacity-50 transition-colors"
-              >
-                {saving ? "Saving…" : "Save Credentials"}
-              </button>
-              {saveMsg && <span className="text-sm text-[#006c49] font-medium">{saveMsg}</span>}
-            </div>
+            
             <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl">
               <p className="text-xs font-semibold text-blue-900 mb-2">Required Permissions</p>
               <div className="flex flex-wrap gap-2">

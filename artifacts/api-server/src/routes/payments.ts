@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Response } from "express";
 import { z } from "zod";
 import { and, desc, eq, gt, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -21,8 +21,7 @@ import { encryptCredential } from "../services/credentialVault";
 import { sendEmail, buildOrderConfirmationEmail, getStoreUrl } from "../services/mailer";
 import { sendWhatsAppNotification, buildWhatsAppOrderConfirmationMessage } from "../services/whatsappService";
 import { eventBus } from "../lib/eventBus";
-import { getEproloConfig } from "./eprolo";
-import { eprolo } from "../services/eprolo";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 
@@ -73,7 +72,7 @@ const refundSchema = z.object({
   reason: z.string().trim().max(255).optional(),
 });
 
-function getClientIp(req: Request): string {
+function getClientIp(req: TenantRequest): string {
   const forwarded = req.headers["x-forwarded-for"];
   if (typeof forwarded === "string") return forwarded.split(",")[0].trim();
   return req.socket?.remoteAddress || "127.0.0.1";
@@ -87,9 +86,9 @@ function addressSnapshot(value: string | Record<string, any>) {
 
 // ── Admin: List Providers & Connections ──────────────────────────────────────
 
-router.get("/providers", requireAdmin, async (req, res) => {
+router.get("/providers", requireAdmin, async (req: TenantRequest, res: Response) => {
   try {
-    const storeId = (req.query.storeId as string) || "store-main";
+    const storeId = req.storeId!;
     const data = await paymentService.getProvidersStatus(storeId);
     return res.json(data);
   } catch (err: any) {
@@ -99,12 +98,12 @@ router.get("/providers", requireAdmin, async (req, res) => {
 
 // ── Admin: Initiate OAuth Connect ───────────────────────────────────────────
 
-router.post("/providers/:provider/connect", requireAdmin, async (req, res) => {
+router.post("/providers/:provider/connect", requireAdmin, async (req: TenantRequest, res: Response) => {
   const parsed = providerParamSchema.safeParse(req.params.provider);
   if (!parsed.success) return res.status(400).json({ error: "Invalid payment provider." });
 
   try {
-    const storeId = (req.body.storeId as string) || "store-main";
+    const storeId = req.storeId!;
     const host = req.get("host") || "localhost:3000";
     const protocol = req.protocol === "https" || req.get("x-forwarded-proto") === "https" ? "https" : "http";
     const redirectUri = req.body.redirectUri || `${protocol}://${host}/api/payments/oauth/callback`;
@@ -133,7 +132,7 @@ router.post("/providers/:provider/connect", requireAdmin, async (req, res) => {
 
 // ── Admin: Manual Direct Credentials Connection ─────────────────────────────
 
-router.post("/providers/:provider/manual-connect", requireAdmin, async (req, res) => {
+router.post("/providers/:provider/manual-connect", requireAdmin, async (req: TenantRequest, res: Response) => {
   const providerParsed = providerParamSchema.safeParse(req.params.provider);
   if (!providerParsed.success) return res.status(400).json({ error: "Invalid payment provider." });
 
@@ -142,7 +141,7 @@ router.post("/providers/:provider/manual-connect", requireAdmin, async (req, res
     return res.status(400).json({ error: "Validation failed.", details: bodyParsed.error.flatten() });
   }
 
-  const storeId = (req.body.storeId as string) || "store-main";
+  const storeId = req.storeId!;
   await paymentService.ensureStore(storeId);
   const data = bodyParsed.data;
 
@@ -175,7 +174,7 @@ router.post("/providers/:provider/manual-connect", requireAdmin, async (req, res
         lastSyncedAt: new Date(),
         connectedAt: new Date(),
         updatedAt: new Date(),
-      }).where(eq(paymentProviderConnectionsTable.id, existing.id));
+      }).where(and(eq(paymentProviderConnectionsTable.id, existing.id), eq(paymentProviderConnectionsTable.storeId, storeId)));
     } else {
       await db.insert(paymentProviderConnectionsTable).values({
         id: randomUUID(),
@@ -213,12 +212,12 @@ router.post("/providers/:provider/manual-connect", requireAdmin, async (req, res
 
 // ── Admin: Set Active Provider ──────────────────────────────────────────────
 
-router.post("/providers/:provider/set-active", requireAdmin, async (req, res) => {
+router.post("/providers/:provider/set-active", requireAdmin, async (req: TenantRequest, res: Response) => {
   const parsed = providerParamSchema.safeParse(req.params.provider);
   if (!parsed.success) return res.status(400).json({ error: "Invalid payment provider." });
 
   try {
-    const storeId = (req.body.storeId as string) || "store-main";
+    const storeId = req.storeId!;
     const result = await paymentService.setActiveProvider({
       storeId,
       providerName: parsed.data,
@@ -235,12 +234,12 @@ router.post("/providers/:provider/set-active", requireAdmin, async (req, res) =>
 
 // ── Admin: Disconnect Provider ──────────────────────────────────────────────
 
-router.post("/providers/:provider/disconnect", requireAdmin, async (req, res) => {
+router.post("/providers/:provider/disconnect", requireAdmin, async (req: TenantRequest, res: Response) => {
   const parsed = providerParamSchema.safeParse(req.params.provider);
   if (!parsed.success) return res.status(400).json({ error: "Invalid payment provider." });
 
   try {
-    const storeId = (req.body.storeId as string) || "store-main";
+    const storeId = req.storeId!;
     const result = await paymentService.disconnectProvider({
       storeId,
       providerName: parsed.data,
@@ -257,9 +256,9 @@ router.post("/providers/:provider/disconnect", requireAdmin, async (req, res) =>
 
 // ── Admin: Audit Logs & Transactions ────────────────────────────────────────
 
-router.get("/audit-logs", requireAdmin, async (req, res) => {
+router.get("/audit-logs", requireAdmin, async (req: TenantRequest, res: Response) => {
   try {
-    const storeId = (req.query.storeId as string) || "store-main";
+    const storeId = req.storeId!;
     const logs = await db.select().from(paymentAuditLogsTable)
       .where(eq(paymentAuditLogsTable.storeId, storeId))
       .orderBy(desc(paymentAuditLogsTable.createdAt))
@@ -270,9 +269,9 @@ router.get("/audit-logs", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/transactions", requireAdmin, async (req, res) => {
+router.get("/transactions", requireAdmin, async (req: TenantRequest, res: Response) => {
   try {
-    const storeId = (req.query.storeId as string) || "store-main";
+    const storeId = req.storeId!;
     const transactions = await db.select().from(paymentTransactionsTable)
       .where(eq(paymentTransactionsTable.storeId, storeId))
       .orderBy(desc(paymentTransactionsTable.createdAt))
@@ -285,18 +284,19 @@ router.get("/transactions", requireAdmin, async (req, res) => {
 
 // ── Admin: Process Refund ───────────────────────────────────────────────────
 
-router.post("/refund", requireAdmin, async (req, res) => {
+router.post("/refund", requireAdmin, async (req: TenantRequest, res: Response) => {
   const parsed = refundSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid refund payload.", details: parsed.error.flatten() });
 
   try {
+    const storeId = req.storeId!;
     const [tx] = await db.select().from(paymentTransactionsTable)
-      .where(eq(paymentTransactionsTable.reference, parsed.data.reference)).limit(1);
+      .where(and(eq(paymentTransactionsTable.reference, parsed.data.reference), eq(paymentTransactionsTable.storeId, storeId))).limit(1);
     if (!tx) return res.status(404).json({ error: "Transaction not found." });
 
     const refundAmount = parsed.data.amount || tx.amount;
     const result = await paymentService.processRefund({
-      storeId: tx.storeId,
+      storeId,
       transactionId: tx.id,
       reference: tx.reference,
       providerTransactionId: tx.providerTransactionId || undefined,
@@ -310,7 +310,7 @@ router.post("/refund", requireAdmin, async (req, res) => {
         paymentStatus: "REFUNDED",
         status: "CANCELLED",
         updatedAt: new Date(),
-      }).where(eq(ordersTable.id, tx.orderId));
+      }).where(and(eq(ordersTable.id, tx.orderId), eq(ordersTable.storeId, storeId)));
     }
 
     return res.json({ success: true, refund: result });
@@ -331,9 +331,9 @@ router.all(["/oauth/callback", "/oauth/callback/", "/oauth/callback/:provider"],
   const adminOrigin = process.env.ADMIN_URL || `${protocol}://${host}`;
 
   const buildRedirect = (basePath: string, queryParams: Record<string, string>) => {
-    let cleanPath = basePath || "/admin/providers?tab=payments";
-    if (!cleanPath.startsWith("http") && !cleanPath.startsWith("/admin")) {
-      cleanPath = `/admin${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
+    let cleanPath = basePath || "/seller/providers?tab=payments";
+    if (!cleanPath.startsWith("http") && !cleanPath.startsWith("/seller")) {
+      cleanPath = `/seller${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
     }
     const targetUrl = cleanPath.startsWith("http") ? new URL(cleanPath) : new URL(cleanPath, adminOrigin);
     Object.entries(queryParams).forEach(([k, v]) => targetUrl.searchParams.set(k, v));
@@ -341,7 +341,7 @@ router.all(["/oauth/callback", "/oauth/callback/", "/oauth/callback/:provider"],
   };
 
   if (error) {
-    const redirectUrl = buildRedirect("/admin/providers", { tab: "payments", error: String(error) });
+    const redirectUrl = buildRedirect("/seller/providers", { tab: "payments", error: String(error) });
     return res.send(`
       <html>
         <head><title>Authentication Error</title></head>
@@ -363,7 +363,7 @@ router.all(["/oauth/callback", "/oauth/callback/", "/oauth/callback/:provider"],
 
   if (!code || !state) {
     const missingErr = "Missing authorization code or state token.";
-    const redirectUrl = buildRedirect("/admin/providers", { tab: "payments", error: missingErr });
+    const redirectUrl = buildRedirect("/seller/providers", { tab: "payments", error: missingErr });
     return res.send(`
       <html>
         <head><title>Authentication Error</title></head>
@@ -394,7 +394,7 @@ router.all(["/oauth/callback", "/oauth/callback/", "/oauth/callback/:provider"],
       userAgent: req.get("user-agent"),
     });
 
-    const destination = result.returnUrl || "/admin/providers?tab=payments";
+    const destination = result.returnUrl || "/seller/providers?tab=payments";
     const redirectUrl = buildRedirect(destination, { status: "connected", provider: result.provider });
 
     return res.send(`
@@ -417,7 +417,7 @@ router.all(["/oauth/callback", "/oauth/callback/", "/oauth/callback/:provider"],
   } catch (err: any) {
     console.error("[OAuth Callback Error]", err);
     const callbackErr = err.message || "Authorization failed.";
-    const redirectUrl = buildRedirect("/admin/providers", { tab: "payments", error: callbackErr });
+    const redirectUrl = buildRedirect("/seller/providers", { tab: "payments", error: callbackErr });
     return res.send(`
       <html>
         <head><title>Authentication Error</title></head>
@@ -440,9 +440,9 @@ router.all(["/oauth/callback", "/oauth/callback/", "/oauth/callback/:provider"],
 
 // ── Public: Checkout Active Config ──────────────────────────────────────────
 
-router.get(["/checkout-config", "/config"], async (req, res) => {
+router.get(["/checkout-config", "/config"], async (req: TenantRequest, res: Response) => {
   try {
-    const storeId = (req.query.storeId as string) || "store-main";
+    const storeId = req.storeId!;
     const config = await paymentService.getActiveCheckoutConfig(storeId);
     return res.json(config);
   } catch (err: any) {
@@ -452,12 +452,13 @@ router.get(["/checkout-config", "/config"], async (req, res) => {
 
 // ── Public: Initialize Customer Checkout ────────────────────────────────────
 
-router.post("/initialize", async (req, res) => {
+router.post("/initialize", async (req: TenantRequest, res: Response) => {
   const parsed = initializePaymentSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "A valid email, shipping address, and callback URL are required.", details: parsed.error.flatten() });
   }
 
+  const storeId = req.storeId!;
   const sessionUser = await getSessionUser(req);
   const rawCookie = req.cookies?.["luxe_cart"] as string | undefined;
   
@@ -479,14 +480,14 @@ router.post("/initialize", async (req, res) => {
   let cartItems: (typeof storeCartItemsTable.$inferSelect)[] = [];
   if (candidateSessionIds.length > 0) {
     cartItems = await db.select().from(storeCartItemsTable)
-      .where(inArray(storeCartItemsTable.sessionId, candidateSessionIds));
+      .where(and(inArray(storeCartItemsTable.sessionId, candidateSessionIds), eq(storeCartItemsTable.storeId, storeId)));
   }
 
   let subtotal = 0;
   const items: Array<{ name: string; quantity: number; price: number; productId: string }> = [];
 
   for (const item of cartItems) {
-    const [p] = await db.select().from(productsTable).where(eq(productsTable.id, item.productId)).limit(1);
+    const [p] = await db.select().from(productsTable).where(and(eq(productsTable.id, item.productId), eq(productsTable.storeId, storeId))).limit(1);
     if (p && p.status === "ACTIVE") {
       subtotal += p.price * item.quantity;
       items.push({ name: p.name, quantity: item.quantity, price: p.price, productId: p.id });
@@ -498,7 +499,7 @@ router.post("/initialize", async (req, res) => {
     for (const rawItem of req.body.items) {
       const prodId = rawItem.productId || rawItem.id;
       const qty = Math.max(1, Number(rawItem.quantity || rawItem.qty || 1));
-      const [p] = await db.select().from(productsTable).where(eq(productsTable.id, prodId)).limit(1);
+      const [p] = await db.select().from(productsTable).where(and(eq(productsTable.id, prodId), eq(productsTable.storeId, storeId))).limit(1);
       if (p && p.status === "ACTIVE") {
         subtotal += p.price * qty;
         items.push({ name: p.name, quantity: qty, price: p.price, productId: p.id });
@@ -513,7 +514,7 @@ router.post("/initialize", async (req, res) => {
   let discount = 0;
   if (parsed.data.couponCode) {
     const [c] = await db.select().from(couponsTable)
-      .where(eq(couponsTable.code, parsed.data.couponCode.toUpperCase())).limit(1);
+      .where(and(eq(couponsTable.code, parsed.data.couponCode.toUpperCase()), eq(couponsTable.storeId, storeId))).limit(1);
     if (c && c.active && (!c.expiresAt || c.expiresAt > new Date()) && (c.maxUses == null || c.usedCount < c.maxUses) && subtotal >= Number(c.minOrderAmount)) {
       discount = c.discountType === "PERCENTAGE"
         ? Math.min(subtotal, Math.floor((subtotal * Number(c.discountValue)) / 100))
@@ -523,7 +524,6 @@ router.post("/initialize", async (req, res) => {
 
   const amount = Math.max(0, subtotal - discount) * 100;
   const reference = `LUXE_${Date.now()}_${randomBytes(6).toString("hex").toUpperCase()}`;
-  const storeId = (req.body.storeId as string) || "store-main";
   const primarySessionId = candidateSessionIds[0] || (rawCookie ? `anon:${rawCookie}` : "session-guest");
 
   const metadata = {
@@ -574,12 +574,12 @@ router.post("/initialize", async (req, res) => {
 
 // ── Public: Verify Payment & Finalize Order Atomically ──────────────────────
 
-router.get("/verify/:reference", async (req, res) => {
+router.get("/verify/:reference", async (req: TenantRequest, res: Response) => {
   const reference = z.string().trim().min(1).max(200).safeParse(req.params.reference);
   if (!reference.success) return res.status(400).json({ error: "Invalid payment reference." });
 
   try {
-    const storeId = (req.query.storeId as string) || "store-main";
+    const storeId = req.storeId!;
     const verification = await paymentService.verifyCheckout({
       storeId,
       reference: reference.data,
@@ -593,11 +593,11 @@ router.get("/verify/:reference", async (req, res) => {
     // Atomic order finalization with idempotency
     const order = await db.transaction(async (tx) => {
       const [transaction] = await tx.select().from(paymentTransactionsTable)
-        .where(eq(paymentTransactionsTable.reference, reference.data)).limit(1);
+        .where(and(eq(paymentTransactionsTable.reference, reference.data), eq(paymentTransactionsTable.storeId, storeId))).limit(1);
       if (!transaction) throw Object.assign(new Error("Transaction record missing."), { statusCode: 404 });
 
       if (transaction.orderId) {
-        const [existingOrder] = await tx.select().from(ordersTable).where(eq(ordersTable.id, transaction.orderId)).limit(1);
+        const [existingOrder] = await tx.select().from(ordersTable).where(and(eq(ordersTable.id, transaction.orderId), eq(ordersTable.storeId, storeId))).limit(1);
         if (existingOrder) return existingOrder;
       }
 
@@ -608,13 +608,13 @@ router.get("/verify/:reference", async (req, res) => {
       let subtotal = 0;
       for (const item of metaItems) {
         const [product] = await tx.select().from(productsTable)
-          .where(and(eq(productsTable.id, item.productId), eq(productsTable.status, "ACTIVE"))).limit(1);
+          .where(and(eq(productsTable.id, item.productId), eq(productsTable.status, "ACTIVE"), eq(productsTable.storeId, storeId))).limit(1);
         if (!product) throw new Error(`Product ${item.productId} is no longer available.`);
 
         const stockCondition = or(eq(productsTable.trackQuantity, false), gte(productsTable.stock, item.quantity));
         const [reserved] = await tx.update(productsTable)
           .set({ stock: product.trackQuantity ? sql`${productsTable.stock} - ${item.quantity}` : sql`${productsTable.stock}` })
-          .where(and(eq(productsTable.id, product.id), stockCondition)).returning();
+          .where(and(eq(productsTable.id, product.id), eq(productsTable.storeId, storeId), stockCondition)).returning();
 
         if (!reserved) throw new Error(`${product.name} has insufficient stock.`);
         subtotal += item.price * item.quantity;
@@ -624,19 +624,20 @@ router.get("/verify/:reference", async (req, res) => {
       let discount = 0;
       if (meta.couponCode) {
         const [coupon] = await tx.select().from(couponsTable)
-          .where(eq(couponsTable.code, meta.couponCode.toUpperCase())).limit(1);
+          .where(and(eq(couponsTable.code, meta.couponCode.toUpperCase()), eq(couponsTable.storeId, storeId))).limit(1);
         if (coupon && coupon.active && (!coupon.expiresAt || coupon.expiresAt > new Date()) && (coupon.maxUses == null || coupon.usedCount < coupon.maxUses) && subtotal >= Number(coupon.minOrderAmount)) {
           discount = coupon.discountType === "PERCENTAGE"
             ? Math.min(subtotal, Math.floor((subtotal * Number(coupon.discountValue)) / 100))
             : Math.min(subtotal, Number(coupon.discountValue));
 
           await tx.update(couponsTable).set({ usedCount: sql`${couponsTable.usedCount} + 1`, updatedAt: new Date() })
-            .where(eq(couponsTable.id, coupon.id));
+            .where(and(eq(couponsTable.id, coupon.id), eq(couponsTable.storeId, storeId)));
         }
       }
 
       const [created] = await tx.insert(ordersTable).values({
         id: randomUUID(),
+        storeId,
         customerName: meta.customerName || "Customer",
         customerId: meta.customerId,
         customerEmail: meta.customerEmail || transaction.email,
@@ -653,6 +654,7 @@ router.get("/verify/:reference", async (req, res) => {
 
       await tx.insert(orderItemsTable).values(authoritativeItems.map((item) => ({
         id: randomUUID(),
+        storeId,
         orderId: created.id,
         productId: item.productId,
         variantId: item.variantId || null,
@@ -668,10 +670,10 @@ router.get("/verify/:reference", async (req, res) => {
         orderId: created.id,
         verifiedAt: new Date(),
         updatedAt: new Date(),
-      }).where(eq(paymentTransactionsTable.id, transaction.id));
+      }).where(and(eq(paymentTransactionsTable.id, transaction.id), eq(paymentTransactionsTable.storeId, storeId)));
 
       if (transaction.sessionId) {
-        await tx.delete(storeCartItemsTable).where(eq(storeCartItemsTable.sessionId, transaction.sessionId));
+        await tx.delete(storeCartItemsTable).where(and(eq(storeCartItemsTable.sessionId, transaction.sessionId), eq(storeCartItemsTable.storeId, storeId)));
       }
 
       return created;
@@ -679,8 +681,10 @@ router.get("/verify/:reference", async (req, res) => {
 
     eventBus.publish({
       type: "new_order",
+      storeId,
       payload: {
         id: order.id,
+        storeId,
         customerName: order.customerName,
         customerEmail: order.customerEmail,
         total: order.total,
@@ -690,7 +694,7 @@ router.get("/verify/:reference", async (req, res) => {
     });
 
     // Auto-fulfillment & notifications
-    getStoreUrl().then((storeUrl) => {
+    getStoreUrl(storeId).then((storeUrl) => {
       const items = Array.isArray(order.items) ? order.items.map((i: any) => ({ name: i.name, qty: i.qty ?? i.quantity ?? 1, price: i.price ?? 0 })) : [];
       const emailData = buildOrderConfirmationEmail({
         orderId: order.id,
@@ -699,7 +703,7 @@ router.get("/verify/:reference", async (req, res) => {
         total: order.total,
         storeUrl,
       });
-      sendEmail({ to: order.customerEmail, ...emailData }).catch(() => {});
+      sendEmail({ to: order.customerEmail, ...emailData, storeId }).catch(() => {});
 
       const itemSummary = items.map((i: any) => `${i.name} (x${i.qty})`).join(", ");
       const waText = buildWhatsAppOrderConfirmationMessage({
@@ -709,7 +713,7 @@ router.get("/verify/:reference", async (req, res) => {
         itemSummary,
         orderUrl: `${storeUrl}/account/orders`,
       });
-      sendWhatsAppNotification(order.customerEmail, waText).catch(() => {});
+      sendWhatsAppNotification(order.customerEmail, waText, storeId).catch(() => {});
     }).catch(() => {});
 
     return res.json({ status: true, order, verification });

@@ -4,6 +4,7 @@ import {
   facebookPostTemplatesTable, twitterContentTemplatesTable, whatsappTemplatesTable,
   whatsappJourneysTable, whatsappOptinSettingsTable,
   facebookConnectionsTable, facebookPixelEventsTable, facebookAudiencesTable,
+  storesTable,
 } from "./schema";
 
 function simpleHash(s: string) {
@@ -12,7 +13,76 @@ function simpleHash(s: string) {
   return String(h >>> 0);
 }
 
-async function seed() {
+export async function seed() {
+  // ── Stores (Luxury Independent Maisons) ────────────────────────────────────
+  await db.insert(storesTable).values([
+    {
+      id: "store-001",
+      slug: "luxe-boutique",
+      name: "Luxe Boutique Ateliers",
+      planTier: "enterprise",
+      status: "active",
+      isPublished: true,
+      publishStatus: "PUBLISHED",
+      publishableKey: "pk_live_luxeboutique_001",
+      secretKeyHash: simpleHash("sk_live_luxeboutique_001"),
+      currency: "USD",
+      customDomain: "maison.luxeboutique.com",
+    },
+    {
+      id: "store-002",
+      slug: "maison-moretti",
+      name: "Maison Moretti Milano",
+      planTier: "growth",
+      status: "active",
+      isPublished: true,
+      publishStatus: "PUBLISHED",
+      publishableKey: "pk_live_moretti_002",
+      secretKeyHash: simpleHash("sk_live_moretti_002"),
+      currency: "EUR",
+      customDomain: "moretti.it",
+    },
+    {
+      id: "store-003",
+      slug: "aurelia-jewels",
+      name: "Aurelia Haute Joaillerie",
+      planTier: "enterprise",
+      status: "active",
+      isPublished: true,
+      publishStatus: "PUBLISHED",
+      publishableKey: "pk_live_aurelia_003",
+      secretKeyHash: simpleHash("sk_live_aurelia_003"),
+      currency: "USD",
+      customDomain: "aurelia-paris.com",
+    },
+    {
+      id: "store-004",
+      slug: "kurogane",
+      name: "Kurogane Horology",
+      planTier: "growth",
+      status: "active",
+      isPublished: true,
+      publishStatus: "PUBLISHED",
+      publishableKey: "pk_live_kurogane_004",
+      secretKeyHash: simpleHash("sk_live_kurogane_004"),
+      currency: "USD",
+      customDomain: "kurogane-watches.ch",
+    },
+    {
+      id: "store-005",
+      slug: "atelier-celeste",
+      name: "Atelier Céleste",
+      planTier: "starter",
+      status: "active",
+      isPublished: true,
+      publishStatus: "PUBLISHED",
+      publishableKey: "pk_live_celeste_005",
+      secretKeyHash: simpleHash("sk_live_celeste_005"),
+      currency: "GBP",
+      customDomain: "atelierceleste.co.uk",
+    },
+  ]).onConflictDoNothing();
+  console.log("✓ stores");
   // ── Categories ──────────────────────────────────────────────────────────────
   await db.insert(categoriesTable).values([
     { id: "cat-rtw",  name: "Ready-to-Wear", slug: "ready-to-wear", description: "Seasonal clothing collections." },
@@ -550,8 +620,12 @@ async function seed() {
     console.log("✓ admin already exists, skipping");
   }
 
-  await pool.end();
+  if (pool && typeof pool.end === "function" && process.env.DATABASE_URL) {
+    await pool.end();
+  }
   console.log("✓ seed complete");
 }
 
-seed().catch((err) => { console.error(err); process.exit(1); });
+if (process.argv[1] && (process.argv[1].endsWith("seed.ts") || process.argv[1].endsWith("seed.js") || process.argv[1].endsWith("seed.mjs"))) {
+  seed().catch((err) => { console.error(err); process.exit(1); });
+}

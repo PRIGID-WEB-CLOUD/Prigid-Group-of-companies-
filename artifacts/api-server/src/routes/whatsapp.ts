@@ -1,25 +1,26 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { randomUUID } from "crypto";
 import { addEvent, getChannelCredentials } from "./channels";
 import { requireAdmin } from "../middleware/requireAdmin";
-import { db, whatsappTemplatesTable, whatsappJourneysTable, whatsappOptinSettingsTable, newsletterSubscribersTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { db, whatsappTemplatesTable, whatsappJourneysTable, whatsappOptinSettingsTable, newsletterSubscribersTable, storesTable } from "@workspace/db";
+import { and, desc, eq } from "drizzle-orm";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 router.use("/whatsapp", requireAdmin);
 router.use("/channels/whatsapp", requireAdmin);
 
-function getWaCreds() { return getChannelCredentials("whatsapp"); }
+function getWaCreds(storeId: string) { return getChannelCredentials("whatsapp", storeId); }
 
 // ── Sync Templates from WhatsApp Cloud API ────────────────────────────────────
 
-export async function syncTemplatesFromWhatsApp(customWabaId?: string, customToken?: string): Promise<{
+export async function syncTemplatesFromWhatsApp(storeId: string, customWabaId?: string, customToken?: string): Promise<{
   success: boolean;
   count: number;
   error?: string;
   templates?: any[];
 }> {
-  const creds = await getWaCreds();
+  const creds = await getWaCreds(storeId);
   const wabaId = customWabaId || creds["waba_id"];
   const token = customToken || creds["system_access_token"];
 
@@ -70,7 +71,7 @@ export async function syncTemplatesFromWhatsApp(customWabaId?: string, customTok
       const language = item.language || "en_US";
 
       const [existing] = await db.select().from(whatsappTemplatesTable)
-        .where(eq(whatsappTemplatesTable.name, name)).limit(1);
+        .where(and(eq(whatsappTemplatesTable.name, name), eq(whatsappTemplatesTable.storeId, storeId))).limit(1);
 
       if (existing) {
         await db.update(whatsappTemplatesTable).set({
@@ -82,6 +83,7 @@ export async function syncTemplatesFromWhatsApp(customWabaId?: string, customTok
       } else {
         await db.insert(whatsappTemplatesTable).values({
           id: item.id ? String(item.id) : randomUUID(),
+          storeId,
           name,
           category: formattedCategory,
           body: body || `*[${name.toUpperCase()}]*`,
@@ -93,7 +95,7 @@ export async function syncTemplatesFromWhatsApp(customWabaId?: string, customTok
       }
     }
 
-    const allTemplates = await db.select().from(whatsappTemplatesTable).orderBy(desc(whatsappTemplatesTable.createdAt));
+    const allTemplates = await db.select().from(whatsappTemplatesTable).where(eq(whatsappTemplatesTable.storeId, storeId)).orderBy(desc(whatsappTemplatesTable.createdAt));
     return { success: true, count: waTemplates.length, templates: allTemplates };
   } catch (err) {
     return { success: false, count: 0, error: String(err) };
@@ -102,32 +104,35 @@ export async function syncTemplatesFromWhatsApp(customWabaId?: string, customTok
 
 // ── Templates Routes ──────────────────────────────────────────────────────────
 
-router.get("/whatsapp/templates", async (req, res) => {
+router.get("/whatsapp/templates", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const skipSync = req.query.sync === "false";
-  const creds = await getWaCreds();
+  const creds = await getWaCreds(storeId);
 
   // If credentials are configured, sync directly with WhatsApp Cloud API to get latest templates
   if (!skipSync && creds["waba_id"] && creds["system_access_token"]) {
     try {
-      await syncTemplatesFromWhatsApp(creds["waba_id"], creds["system_access_token"]);
+      await syncTemplatesFromWhatsApp(storeId, creds["waba_id"], creds["system_access_token"]);
     } catch (e) {
       console.warn("WhatsApp template background sync error:", e);
     }
   }
 
-  const list = await db.select().from(whatsappTemplatesTable).orderBy(desc(whatsappTemplatesTable.createdAt));
+  const list = await db.select().from(whatsappTemplatesTable).where(eq(whatsappTemplatesTable.storeId, storeId)).orderBy(desc(whatsappTemplatesTable.createdAt));
   return res.json(list);
 });
 
-router.post("/whatsapp/templates/sync", async (_req, res) => {
-  const result = await syncTemplatesFromWhatsApp();
+router.post("/whatsapp/templates/sync", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const result = await syncTemplatesFromWhatsApp(storeId);
   if (!result.success) {
     return res.status(400).json({ error: result.error ?? "Failed to sync templates from WhatsApp" });
   }
   return res.json({ success: true, count: result.count, templates: result.templates });
 });
 
-router.post("/whatsapp/templates", async (req, res) => {
+router.post("/whatsapp/templates", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { name, category, body, language } = req.body as {
     name: string;
     category?: string;
@@ -151,7 +156,7 @@ router.post("/whatsapp/templates", async (req, res) => {
     return res.status(400).json({ error: "Template name must contain alphanumeric characters or underscores (e.g. order_update_v1)." });
   }
 
-  const creds = await getWaCreds();
+  const creds = await getWaCreds(storeId);
   const wabaId = creds["waba_id"];
   const token = creds["system_access_token"];
   const chosenCategory = (category || "Marketing").trim();
@@ -199,15 +204,16 @@ router.post("/whatsapp/templates", async (req, res) => {
       }
 
       // Automatically fetch updated templates from WhatsApp Cloud API to sync state
-      await syncTemplatesFromWhatsApp(wabaId, token);
+      await syncTemplatesFromWhatsApp(storeId, wabaId, token);
 
       let [synced] = await db.select().from(whatsappTemplatesTable)
-        .where(eq(whatsappTemplatesTable.name, cleanName)).limit(1);
+        .where(and(eq(whatsappTemplatesTable.name, cleanName), eq(whatsappTemplatesTable.storeId, storeId))).limit(1);
 
       if (!synced) {
         // In case Meta takes a moment to list the new template in GET, store in DB with initial status
         const [inserted] = await db.insert(whatsappTemplatesTable).values({
           id: metaData.id ? String(metaData.id) : randomUUID(),
+          storeId,
           name: cleanName,
           category: chosenCategory,
           body: body.trim(),
@@ -216,7 +222,7 @@ router.post("/whatsapp/templates", async (req, res) => {
           sentCount: 0,
           createdAt: new Date(),
         }).onConflictDoUpdate({
-          target: whatsappTemplatesTable.name,
+          target: [whatsappTemplatesTable.name, whatsappTemplatesTable.storeId],
           set: {
             body: body.trim(),
             category: chosenCategory,
@@ -230,7 +236,8 @@ router.post("/whatsapp/templates", async (req, res) => {
         "whatsapp",
         `Template "${cleanName}" created on WhatsApp`,
         `Status: ${synced?.status || "Pending"}. Fetched & synced directly from WhatsApp Cloud API.`,
-        "sync"
+        "sync",
+        storeId
       );
 
       return res.status(201).json({
@@ -246,6 +253,7 @@ router.post("/whatsapp/templates", async (req, res) => {
   // Fallback: If no WhatsApp credentials configured yet, save locally as Draft
   const [tpl] = await db.insert(whatsappTemplatesTable).values({
     id: randomUUID(),
+    storeId,
     name: cleanName,
     category: chosenCategory,
     body: body.trim(),
@@ -254,7 +262,7 @@ router.post("/whatsapp/templates", async (req, res) => {
     sentCount: 0,
     createdAt: new Date(),
   }).onConflictDoUpdate({
-    target: whatsappTemplatesTable.name,
+    target: [whatsappTemplatesTable.name, whatsappTemplatesTable.storeId],
     set: {
       body: body.trim(),
       category: chosenCategory,
@@ -262,7 +270,7 @@ router.post("/whatsapp/templates", async (req, res) => {
     },
   }).returning();
 
-  addEvent("whatsapp", `Template draft saved: ${cleanName}`, "Template saved locally. Add WhatsApp credentials to sync directly with WhatsApp Cloud API.", "info");
+  addEvent("whatsapp", `Template draft saved: ${cleanName}`, "Template saved locally. Add WhatsApp credentials to sync directly with WhatsApp Cloud API.", "info", storeId);
 
   return res.status(201).json({
     ...tpl,
@@ -271,13 +279,14 @@ router.post("/whatsapp/templates", async (req, res) => {
   });
 });
 
-router.delete("/whatsapp/templates/:id", async (req, res) => {
+router.delete("/whatsapp/templates/:id", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { id } = req.params;
   const [template] = await db.select().from(whatsappTemplatesTable)
-    .where(eq(whatsappTemplatesTable.id, id as string)).limit(1);
+    .where(and(eq(whatsappTemplatesTable.id, id as string), eq(whatsappTemplatesTable.storeId, storeId))).limit(1);
 
   if (template) {
-    const creds = await getWaCreds();
+    const creds = await getWaCreds(storeId);
     const wabaId = creds["waba_id"];
     const token = creds["system_access_token"];
 
@@ -293,20 +302,21 @@ router.delete("/whatsapp/templates/:id", async (req, res) => {
       }
     }
 
-    await db.delete(whatsappTemplatesTable).where(eq(whatsappTemplatesTable.id, id as string));
-    addEvent("whatsapp", `Template deleted: ${template.name}`, "Template removed from database and WhatsApp.", "info");
+    await db.delete(whatsappTemplatesTable).where(and(eq(whatsappTemplatesTable.id, id as string), eq(whatsappTemplatesTable.storeId, storeId)));
+    addEvent("whatsapp", `Template deleted: ${template.name}`, "Template removed from database and WhatsApp.", "info", storeId);
   }
 
   return res.json({ ok: true });
 });
 
-router.post("/whatsapp/templates/:id/submit", async (req, res) => {
+router.post("/whatsapp/templates/:id/submit", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { id } = req.params;
   const [template] = await db.select().from(whatsappTemplatesTable)
-    .where(eq(whatsappTemplatesTable.id, id as string)).limit(1);
+    .where(and(eq(whatsappTemplatesTable.id, id as string), eq(whatsappTemplatesTable.storeId, storeId))).limit(1);
   if (!template) return res.status(404).json({ error: "Template not found" });
 
-  const creds = await getWaCreds();
+  const creds = await getWaCreds(storeId);
   const wabaId = creds["waba_id"];
   const token = creds["system_access_token"];
   if (!wabaId || !token) {
@@ -344,57 +354,63 @@ router.post("/whatsapp/templates/:id/submit", async (req, res) => {
     }
 
     // Automatically sync templates from WhatsApp
-    await syncTemplatesFromWhatsApp(wabaId, token);
+    await syncTemplatesFromWhatsApp(storeId, wabaId, token);
 
     await db.update(whatsappTemplatesTable).set({ status: "Pending" })
-      .where(eq(whatsappTemplatesTable.id, id as string));
-    addEvent("whatsapp", `Template "${template.name}" submitted to Meta`, "Awaiting approval from Meta. Synced from WhatsApp.", "sync");
+      .where(and(eq(whatsappTemplatesTable.id, id as string), eq(whatsappTemplatesTable.storeId, storeId)));
+    addEvent("whatsapp", `Template "${template.name}" submitted to Meta`, "Awaiting approval from Meta. Synced from WhatsApp.", "sync", storeId);
     return res.json({ ok: true, status: "Pending" });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.get("/whatsapp/journeys", async (_req, res) => {
-  const list = await db.select().from(whatsappJourneysTable).orderBy(desc(whatsappJourneysTable.updatedAt));
+router.get("/whatsapp/journeys", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const list = await db.select().from(whatsappJourneysTable).where(eq(whatsappJourneysTable.storeId, storeId)).orderBy(desc(whatsappJourneysTable.updatedAt));
   return res.json(list);
 });
 
-router.put("/whatsapp/journeys/:journeyId", async (req, res) => {
+router.put("/whatsapp/journeys/:journeyId", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { journeyId } = req.params;
   const { active } = req.body as { active: boolean };
   const [j] = await db.update(whatsappJourneysTable)
     .set({ active: Boolean(active), updatedAt: new Date() })
-    .where(eq(whatsappJourneysTable.journeyId, journeyId as string)).returning();
+    .where(and(eq(whatsappJourneysTable.journeyId, journeyId as string), eq(whatsappJourneysTable.storeId, storeId))).returning();
   if (!j) return res.status(404).json({ error: "Journey not found" });
-  addEvent("whatsapp", `Journey "${j?.title}" ${active ? "activated" : "paused"}`, active ? "Journey is now live." : "Journey paused.", active ? "sync" : "warning");
+  addEvent("whatsapp", `Journey "${j?.title}" ${active ? "activated" : "paused"}`, active ? "Journey is now live." : "Journey paused.", active ? "sync" : "warning", storeId);
   return res.json(j);
 });
 
-router.get("/whatsapp/optin", async (_req, res) => {
+router.get("/whatsapp/optin", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   let [settings] = await db.select().from(whatsappOptinSettingsTable)
-    .where(eq(whatsappOptinSettingsTable.id, "default")).limit(1);
+    .where(eq(whatsappOptinSettingsTable.storeId, storeId)).limit(1);
   if (!settings) {
     try {
       [settings] = await db.insert(whatsappOptinSettingsTable).values({
-        id: "default",
+        id: randomUUID(),
+        storeId,
         optinKeyword: "JOIN",
         optoutKeyword: "STOP",
         doubleOptin: true,
       }).onConflictDoNothing().returning();
     } catch {}
   }
-  return res.json(settings ?? { id: "default", optinKeyword: "JOIN", optoutKeyword: "STOP", doubleOptin: true });
+  return res.json(settings ?? { id: "default", storeId, optinKeyword: "JOIN", optoutKeyword: "STOP", doubleOptin: true });
 });
 
-router.put("/whatsapp/optin", async (req, res) => {
+router.put("/whatsapp/optin", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const [settings] = await db.insert(whatsappOptinSettingsTable).values({
-    id: "default",
+    id: randomUUID(),
+    storeId,
     optinKeyword: String(req.body.optinKeyword ?? "JOIN"),
     optoutKeyword: String(req.body.optoutKeyword ?? "STOP"),
     doubleOptin: Boolean(req.body.doubleOptin ?? true),
   }).onConflictDoUpdate({
-    target: whatsappOptinSettingsTable.id,
+    target: [whatsappOptinSettingsTable.storeId],
     set: {
       optinKeyword: String(req.body.optinKeyword ?? "JOIN"),
       optoutKeyword: String(req.body.optoutKeyword ?? "STOP"),
@@ -405,9 +421,10 @@ router.put("/whatsapp/optin", async (req, res) => {
   return res.json(settings);
 });
 
-router.get("/whatsapp/stats", async (_req, res) => {
+router.get("/whatsapp/stats", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   try {
-    const list = await db.select().from(newsletterSubscribersTable);
+    const list = await db.select().from(newsletterSubscribersTable).where(eq(newsletterSubscribersTable.storeId, storeId));
     const total = list.length;
     const active = list.filter((s) => s.active).length;
     const optedOut = total - active;
@@ -419,8 +436,9 @@ router.get("/whatsapp/stats", async (_req, res) => {
 
 // ── Live: WhatsApp Phone Info ─────────────────────────────────────────────────
 
-router.get("/whatsapp/phone-info", async (_req, res) => {
-  const creds = await getWaCreds();
+router.get("/whatsapp/phone-info", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const creds = await getWaCreds(storeId);
   const phoneNumberId = creds["phone_number_id"];
   const token = creds["system_access_token"];
   if (!phoneNumberId || !token) return res.status(400).json({ error: "Missing WhatsApp credentials — add Phone Number ID and System Access Token." });
@@ -438,8 +456,9 @@ router.get("/whatsapp/phone-info", async (_req, res) => {
 
 // ── Live: Phone Registration & Verification (Fix Error #133010) ────────────────
 
-router.post("/whatsapp/request-code", async (req, res) => {
-  const creds = await getWaCreds();
+router.post("/whatsapp/request-code", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const creds = await getWaCreds(storeId);
   const phoneNumberId = creds["phone_number_id"];
   const token = creds["system_access_token"];
   if (!phoneNumberId || !token) return res.status(400).json({ error: "Missing WhatsApp credentials." });
@@ -462,15 +481,16 @@ router.post("/whatsapp/request-code", async (req, res) => {
       }
       return res.status(400).json({ error: msg, details: metaErr });
     }
-    addEvent("whatsapp", "Verification code requested", `Method: ${code_method}`, "info");
+    addEvent("whatsapp", "Verification code requested", `Method: ${code_method}`, "info", storeId);
     return res.json({ success: true, ...data });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.post("/whatsapp/verify-code", async (req, res) => {
-  const creds = await getWaCreds();
+router.post("/whatsapp/verify-code", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const creds = await getWaCreds(storeId);
   const phoneNumberId = creds["phone_number_id"];
   const token = creds["system_access_token"];
   if (!phoneNumberId || !token) return res.status(400).json({ error: "Missing WhatsApp credentials." });
@@ -495,15 +515,16 @@ router.post("/whatsapp/verify-code", async (req, res) => {
       }
       return res.status(400).json({ error: msg, details: metaErr });
     }
-    addEvent("whatsapp", "Phone verified with Meta", "Phone verification code accepted.", "sync");
+    addEvent("whatsapp", "Phone verified with Meta", "Phone verification code accepted.", "sync", storeId);
     return res.json({ success: true, ...data });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
-router.post("/whatsapp/register-phone", async (req, res) => {
-  const creds = await getWaCreds();
+router.post("/whatsapp/register-phone", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const creds = await getWaCreds(storeId);
   const phoneNumberId = creds["phone_number_id"];
   const token = creds["system_access_token"];
   if (!phoneNumberId || !token) return res.status(400).json({ error: "Missing WhatsApp credentials." });
@@ -533,7 +554,7 @@ router.post("/whatsapp/register-phone", async (req, res) => {
       }
       return res.status(400).json({ error: msg, details: metaErr });
     }
-    addEvent("whatsapp", "Phone registered on Cloud API", "Status changed to CONNECTED.", "sync");
+    addEvent("whatsapp", "Phone registered on Cloud API", "Status changed to CONNECTED.", "sync", storeId);
     return res.json({ success: true, ...data });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
@@ -542,8 +563,9 @@ router.post("/whatsapp/register-phone", async (req, res) => {
 
 // ── Live: Send Message ────────────────────────────────────────────────────────
 
-router.post("/whatsapp/messages/send", async (req, res) => {
-  const creds = await getWaCreds();
+router.post("/whatsapp/messages/send", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const creds = await getWaCreds(storeId);
   const phoneNumberId = creds["phone_number_id"];
   const token = creds["system_access_token"];
   const { to, text } = req.body as { to: string; text: string };
@@ -564,7 +586,7 @@ router.post("/whatsapp/messages/send", async (req, res) => {
     });
     const data = await r.json() as Record<string, unknown>;
     if (!r.ok || data["error"]) return res.status(400).json({ error: (data["error"] as Record<string, string>)?.message ?? `HTTP ${r.status}` });
-    addEvent("whatsapp", `Message sent to +${to}`, `"${text.slice(0, 50)}${text.length > 50 ? "…" : ""}"`, "sync");
+    addEvent("whatsapp", `Message sent to +${to}`, `"${text.slice(0, 50)}${text.length > 50 ? "…" : ""}"`, "sync", storeId);
     return res.json({ result: data });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
@@ -573,8 +595,9 @@ router.post("/whatsapp/messages/send", async (req, res) => {
 
 // ── Live: WhatsApp Template Broadcast ─────────────────────────────────────────
 
-router.post("/whatsapp/broadcast", async (req, res) => {
-  const creds = await getWaCreds();
+router.post("/whatsapp/broadcast", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const creds = await getWaCreds(storeId);
   const phoneNumberId = creds["phone_number_id"];
   const token = creds["system_access_token"];
 
@@ -603,7 +626,7 @@ router.post("/whatsapp/broadcast", async (req, res) => {
   let targetTplId = templateId;
   if (templateId) {
     const [tpl] = await db.select().from(whatsappTemplatesTable)
-      .where(eq(whatsappTemplatesTable.id, templateId)).limit(1);
+      .where(and(eq(whatsappTemplatesTable.id, templateId), eq(whatsappTemplatesTable.storeId, storeId))).limit(1);
     if (tpl) {
       selectedTplName = tpl.name;
     }
@@ -619,7 +642,7 @@ router.post("/whatsapp/broadcast", async (req, res) => {
     targetPhones = recipients.map((p) => String(p).replace(/\D/g, "")).filter(Boolean);
   } else if (broadcastAllSubscribers) {
     const subscribers = await db.select().from(newsletterSubscribersTable)
-      .where(eq(newsletterSubscribersTable.active, true));
+      .where(and(eq(newsletterSubscribersTable.active, true), eq(newsletterSubscribersTable.storeId, storeId)));
     
     // Extract phone numbers or emails formatted as phones
     for (const sub of subscribers) {
@@ -690,7 +713,7 @@ router.post("/whatsapp/broadcast", async (req, res) => {
   // Update sentCount on template
   if (targetTplId) {
     const [tpl] = await db.select().from(whatsappTemplatesTable)
-      .where(eq(whatsappTemplatesTable.id, targetTplId)).limit(1);
+      .where(and(eq(whatsappTemplatesTable.id, targetTplId), eq(whatsappTemplatesTable.storeId, storeId))).limit(1);
     if (tpl) {
       await db.update(whatsappTemplatesTable)
         .set({ sentCount: (tpl.sentCount || 0) + successCount })
@@ -702,7 +725,8 @@ router.post("/whatsapp/broadcast", async (req, res) => {
     "whatsapp",
     `Broadcast "${selectedTplName}" to ${targetPhones.length} subscribers`,
     `Delivered: ${successCount}, Failed: ${failedCount}. ${phoneNumberId ? "Dispatched via Meta Cloud API." : "Simulated broadcast mode."}`,
-    failedCount > 0 ? "warning" : "sync"
+    failedCount > 0 ? "warning" : "sync",
+    storeId
   );
 
   return res.json({

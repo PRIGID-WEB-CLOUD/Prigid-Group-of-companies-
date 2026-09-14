@@ -19,15 +19,50 @@ export default defineConfig({
     react(),
     tailwindcss(),
     {
-      name: "admin-slash-redirect",
+      name: "seller-slash-redirect",
       configureServer(server) {
-        server.middlewares.use((req, res, next) => {
+        server.middlewares.use(async (req, res, next) => {
           const url = req.url || "";
-          if (url === "/admin" || url.startsWith("/admin?")) {
+          let parsedUrl;
+          try {
+            parsedUrl = new URL(url, "http://localhost");
+          } catch {
+            return next();
+          }
+          
+          const pathname = parsedUrl.pathname;
+          const isPreview = parsedUrl.searchParams.has("preview") || parsedUrl.searchParams.get("store") === "true";
+
+          if (pathname.startsWith("/boutique/") || pathname.startsWith("/store/")) {
+            const parts = pathname.split("/").filter(Boolean);
+            const slug = parts[1];
+            if (slug) {
+              res.setHeader("Set-Cookie", `prigid_store_slug=${slug}; Path=/; Max-Age=86400; SameSite=Lax`);
+            }
+          }
+
+          if (pathname === "/seller" || pathname.startsWith("/seller?")) {
             const query = url.includes("?") ? url.slice(url.indexOf("?")) : "";
-            res.writeHead(302, { Location: `/admin/${query}` });
+            res.writeHead(302, { Location: `/seller/${query}` });
             res.end();
             return;
+          }
+
+          if (pathname === "/" || pathname === "/platform") {
+            if (isPreview) {
+              return next();
+            }
+            try {
+              const fs = await import("fs");
+              const landingPath = path.resolve(import.meta.dirname, "..", "prigid-landing/index.html");
+              if (fs.existsSync(landingPath)) {
+                res.writeHead(200, { "Content-Type": "text/html" });
+                res.end(fs.readFileSync(landingPath, "utf-8"));
+                return;
+              }
+            } catch (e) {
+              console.error("Failed to serve landing page in dev server:", e);
+            }
           }
           next();
         });
@@ -91,7 +126,7 @@ export default defineConfig({
           });
         },
       },
-      "/admin": {
+      "/seller": {
         target: "http://127.0.0.1:3005",
         changeOrigin: true,
         ws: true,
@@ -99,7 +134,7 @@ export default defineConfig({
           proxy.on("error", (_err, _req, res) => {
             if (res && "writeHead" in res && !res.headersSent) {
               res.writeHead(503, { "Content-Type": "text/html" });
-              res.end("Admin service warming up. Please reload in a moment.");
+              res.end("Seller service warming up. Please reload in a moment.");
             }
           });
         },

@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from "express";
+import { type TenantRequest } from "../middleware/tenantContext";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { db, channelConfigsTable, channelEventLogsTable, facebookConnectionsTable, channelCredentialsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { requireAdmin } from "../middleware/requireAdmin";
 import {
   getChannelCredentials,
@@ -109,10 +110,11 @@ function resolvePublicBaseUrl(req: Request, clientOrigin?: string): string {
   return `${proto}://${rawHost}`;
 }
 
-function signOAuthState(adminId: string, redirectUri: string): string {
+function signOAuthState(adminId: string, redirectUri: string, storeId: string): string {
   const payload = {
     adminId,
     redirectUri,
+    storeId,
     timestamp: Date.now(),
     nonce: randomBytes(12).toString("hex"),
   };
@@ -121,7 +123,7 @@ function signOAuthState(adminId: string, redirectUri: string): string {
   return `${encoded}.${signature}`;
 }
 
-function verifyOAuthState(state: string): { valid: boolean; adminId?: string; redirectUri?: string; error?: string } {
+function verifyOAuthState(state: string): { valid: boolean; adminId?: string; redirectUri?: string; storeId?: string; error?: string } {
   try {
     const [encoded, signature] = state.split(".");
     if (!encoded || !signature) return { valid: false, error: "Malformed OAuth state parameter." };
@@ -134,6 +136,7 @@ function verifyOAuthState(state: string): { valid: boolean; adminId?: string; re
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as {
       adminId: string;
       redirectUri?: string;
+      storeId?: string;
       timestamp: number;
     };
     const maxAgeMs = 15 * 60 * 1000; // 15 minutes
@@ -141,7 +144,7 @@ function verifyOAuthState(state: string): { valid: boolean; adminId?: string; re
       return { valid: false, error: "OAuth state has expired. Please try connecting again." };
     }
 
-    return { valid: true, adminId: payload.adminId, redirectUri: payload.redirectUri };
+    return { valid: true, adminId: payload.adminId, redirectUri: payload.redirectUri, storeId: payload.storeId };
   } catch {
     return { valid: false, error: "Failed to parse state token." };
   }
@@ -170,7 +173,7 @@ async function metaGet(path: string, accessToken: string, params: Record<string,
   return { ok: true, status: res.status, data };
 }
 
-async function discoverMetaAssets(masterToken: string): Promise<DiscoveredAssets> {
+async function discoverMetaAssets(masterToken: string, storeId: string): Promise<DiscoveredAssets> {
   const assets: DiscoveredAssets = {
     pages: [],
     catalogs: [],
@@ -358,8 +361,8 @@ async function discoverMetaAssets(masterToken: string): Promise<DiscoveredAssets
     // 3d. Check existing catalog ID from database to prevent losing existing connection
     try {
       const [commCreds, fbCreds] = await Promise.all([
-        getChannelCredentials("commerce"),
-        getChannelCredentials("facebook"),
+        getChannelCredentials("commerce", storeId),
+        getChannelCredentials("facebook", storeId),
       ]);
       const existingId = commCreds["catalog_id"] || fbCreds["catalog_id"];
       if (existingId && !seenCatalogIds.has(existingId)) {
@@ -506,6 +509,7 @@ async function provisionDiscoveredAssets(
   assets: DiscoveredAssets,
   masterToken: string,
   expiresAt: string,
+  storeId: string,
   user?: { id?: string; name?: string; email?: string }
 ) {
   // Store Master Meta Business credentials
@@ -518,7 +522,7 @@ async function provisionDiscoveredAssets(
     expires_at: expiresAt,
     connected_at: new Date().toISOString(),
     discovered_assets: JSON.stringify(assets),
-  });
+  }, storeId);
 
   const now = new Date();
 
@@ -526,18 +530,19 @@ async function provisionDiscoveredAssets(
   const primaryPage = assets.pages[0];
   const primaryPixel = assets.pixels?.[0];
   if (primaryPage) {
-    const existingFb = await getChannelCredentials("facebook");
+    const existingFb = await getChannelCredentials("facebook", storeId);
     await persistCredentials("facebook", {
       page_id: primaryPage.id,
       page_name: primaryPage.name,
       page_access_token: primaryPage.accessToken,
       pixel_id: primaryPixel?.id || existingFb["pixel_id"] || "",
       source: "meta_business",
-    });
+    }, storeId);
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "facebook",
         status: "CONNECTED",
         latency: 120,
@@ -545,11 +550,11 @@ async function provisionDiscoveredAssets(
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
-    await addEvent("facebook", "Auto-provisioned via Meta Business Suite", `Linked Facebook Page "${primaryPage.name}" (ID: ${primaryPage.id})`, "sync");
+    await addEvent("facebook", "Auto-provisioned via Meta Business Suite", `Linked Facebook Page "${primaryPage.name}" (ID: ${primaryPage.id})`, "sync", storeId);
 
     // 2. Provision Instagram if linked to primary page or any discovered page
     const igPage = primaryPage.instagramAccount ? primaryPage : assets.pages.find((p) => p.instagramAccount);
@@ -559,11 +564,12 @@ async function provisionDiscoveredAssets(
         ig_username: igPage.instagramAccount.username,
         page_access_token: igPage.accessToken,
         source: "meta_business",
-      });
+      }, storeId);
 
       await db.insert(channelConfigsTable)
         .values({
           id: randomUUID(),
+          storeId,
           channelId: "instagram",
           status: "CONNECTED",
           latency: 140,
@@ -571,11 +577,11 @@ async function provisionDiscoveredAssets(
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: channelConfigsTable.channelId,
+          target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
           set: { status: "CONNECTED", lastSync: now, updatedAt: now },
         });
 
-      await addEvent("instagram", "Auto-provisioned via Meta Business Suite", `Linked Instagram Account "@${igPage.instagramAccount.username}" (via Page "${igPage.name}")`, "sync");
+      await addEvent("instagram", "Auto-provisioned via Meta Business Suite", `Linked Instagram Account "@${igPage.instagramAccount.username}" (via Page "${igPage.name}")`, "sync", storeId);
     }
   }
 
@@ -588,11 +594,12 @@ async function provisionDiscoveredAssets(
       catalog_name: primaryCatalog.name,
       page_access_token: token,
       source: "meta_business",
-    });
+    }, storeId);
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "commerce",
         status: "CONNECTED",
         latency: 110,
@@ -600,34 +607,34 @@ async function provisionDiscoveredAssets(
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
     await db.insert(facebookConnectionsTable)
-      .values({ id: randomUUID(), connectionKey: "commerce", active: true, updatedAt: now })
+      .values({ id: randomUUID(), storeId, connectionKey: "commerce", active: true, updatedAt: now })
       .onConflictDoUpdate({
-        target: facebookConnectionsTable.connectionKey,
+        target: [facebookConnectionsTable.storeId, facebookConnectionsTable.connectionKey],
         set: { active: true, updatedAt: now },
       });
 
-    const existingFb = await getChannelCredentials("facebook");
+    const existingFb = await getChannelCredentials("facebook", storeId);
     if (existingFb["page_id"]) {
       await persistCredentials("facebook", {
         ...existingFb,
         catalog_id: primaryCatalog.id,
         catalog_name: primaryCatalog.name,
-      });
+      }, storeId);
     }
 
-    await addEvent("commerce", "Auto-provisioned via Meta Business Suite", `Linked Product Catalog "${primaryCatalog.name}" (ID: ${primaryCatalog.id})`, "sync");
+    await addEvent("commerce", "Auto-provisioned via Meta Business Suite", `Linked Product Catalog "${primaryCatalog.name}" (ID: ${primaryCatalog.id})`, "sync", storeId);
   }
 
   // 4. Provision WhatsApp Business
   const primaryWaba = assets.whatsappAccounts[0];
   const primaryPhone = primaryWaba?.phones[0];
   if (primaryWaba && primaryPhone) {
-    const existingWa = await getChannelCredentials("whatsapp");
+    const existingWa = await getChannelCredentials("whatsapp", storeId);
     const verifyToken = existingWa["webhook_verify_token"] || `verify_${randomUUID().slice(0, 8)}`;
     
     await persistCredentials("whatsapp", {
@@ -638,11 +645,12 @@ async function provisionDiscoveredAssets(
       system_access_token: masterToken,
       webhook_verify_token: verifyToken,
       source: "meta_business",
-    });
+    }, storeId);
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "whatsapp",
         status: "CONNECTED",
         latency: 130,
@@ -650,11 +658,11 @@ async function provisionDiscoveredAssets(
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
-    await addEvent("whatsapp", "Auto-provisioned via Meta Business Suite", `Linked WhatsApp Phone ${primaryPhone.displayPhoneNumber} (${primaryPhone.verifiedName || primaryWaba.name})`, "sync");
+    await addEvent("whatsapp", "Auto-provisioned via Meta Business Suite", `Linked WhatsApp Phone ${primaryPhone.displayPhoneNumber} (${primaryPhone.verifiedName || primaryWaba.name})`, "sync", storeId);
   }
 
   // 5. Provision Ad Account
@@ -665,11 +673,12 @@ async function provisionDiscoveredAssets(
       ad_account_name: primaryAd.name,
       page_access_token: masterToken,
       source: "meta_business",
-    });
+    }, storeId);
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "ads",
         status: "CONNECTED",
         latency: 115,
@@ -677,44 +686,45 @@ async function provisionDiscoveredAssets(
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
-    await addEvent("ads", "Auto-provisioned via Meta Business Suite", `Linked Ad Account "${primaryAd.name}" (${primaryAd.accountId})`, "sync");
+    await addEvent("ads", "Auto-provisioned via Meta Business Suite", `Linked Ad Account "${primaryAd.name}" (${primaryAd.accountId})`, "sync", storeId);
   }
 
   // 6. Provision Meta Pixel -> Facebook and Ads credentials & active connection
   if (primaryPixel) {
-    const existingFb = await getChannelCredentials("facebook");
+    const existingFb = await getChannelCredentials("facebook", storeId);
     await persistCredentials("facebook", {
       ...existingFb,
       pixel_id: primaryPixel.id,
       source: existingFb["source"] || "meta_business",
-    });
+    }, storeId);
 
-    const existingAds = await getChannelCredentials("ads");
+    const existingAds = await getChannelCredentials("ads", storeId);
     await persistCredentials("ads", {
       ...existingAds,
       pixel_id: primaryPixel.id,
       source: existingAds["source"] || "meta_business",
-    });
+    }, storeId);
 
     await db.insert(facebookConnectionsTable)
-      .values({ id: randomUUID(), connectionKey: "pixel", active: true, updatedAt: now })
+      .values({ id: randomUUID(), storeId, connectionKey: "pixel", active: true, updatedAt: now })
       .onConflictDoUpdate({
-        target: facebookConnectionsTable.connectionKey,
+        target: [facebookConnectionsTable.storeId, facebookConnectionsTable.connectionKey],
         set: { active: true, updatedAt: now },
       });
 
-    await addEvent("facebook", "Auto-provisioned via Meta Business Suite", `Linked Meta Pixel "${primaryPixel.name}" (ID: ${primaryPixel.id})`, "sync");
+    await addEvent("facebook", "Auto-provisioned via Meta Business Suite", `Linked Meta Pixel "${primaryPixel.name}" (ID: ${primaryPixel.id})`, "sync", storeId);
   }
 
   await addEvent(
     "system",
     "Meta Business Suite Login Connected",
     `Consolidated auth established. Synchronized Facebook Page, Instagram, WhatsApp, Catalog, Ads, and Pixel.`,
-    "sync"
+    "sync",
+    storeId
   );
 }
 
@@ -782,7 +792,7 @@ function renderOAuthSuccessHtml(): string {
       window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'meta' }, '*');
       setTimeout(function() { window.close(); }, 1200);
     } else {
-      setTimeout(function() { window.location.href = '/admin/channels/meta-business?status=connected'; }, 1500);
+      setTimeout(function() { window.location.href = '/seller/channels/meta-business?status=connected'; }, 1500);
     }
   </script>
 </body>
@@ -863,7 +873,8 @@ function renderOAuthErrorHtml(errorMsg: string): string {
  * GET /channels/meta/auth-url
  * Generates the Facebook Login for Business authorization dialog URL
  */
-router.get("/channels/meta/auth-url", requireAdmin, (req: Request, res: Response) => {
+router.get("/channels/meta/auth-url", requireAdmin, (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
   
@@ -882,7 +893,7 @@ router.get("/channels/meta/auth-url", requireAdmin, (req: Request, res: Response
   const redirectUri = `${baseUrl}/api/channels/meta/callback`;
 
   const configured = Boolean(appId && appSecret);
-  const state = signOAuthState(req.adminUser?.id || "admin", redirectUri);
+  const state = signOAuthState(req.adminUser?.id || "admin", redirectUri, storeId);
 
   if (!configured) {
     return res.json({
@@ -993,9 +1004,11 @@ router.get("/channels/meta/callback", async (req: Request, res: Response) => {
   }
 
   const stateResult = verifyOAuthState(state);
-  if (!stateResult.valid) {
+  if (!stateResult.valid || !stateResult.storeId) {
     return res.status(403).send(renderOAuthErrorHtml(stateResult.error || "Security verification failed."));
   }
+
+  const storeId = stateResult.storeId;
 
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
@@ -1047,10 +1060,10 @@ router.get("/channels/meta/callback", async (req: Request, res: Response) => {
       email: meRes.data?.email ? String(meRes.data.email) : undefined,
     };
 
-    const discoveredAssets = await discoverMetaAssets(masterToken);
+    const discoveredAssets = await discoverMetaAssets(masterToken, storeId);
 
     // 4. Provision assets into database
-    await provisionDiscoveredAssets(discoveredAssets, masterToken, expiresAt, user);
+    await provisionDiscoveredAssets(discoveredAssets, masterToken, expiresAt, storeId, user);
 
     return res.send(renderOAuthSuccessHtml());
   } catch (err) {
@@ -1063,12 +1076,13 @@ router.get("/channels/meta/callback", async (req: Request, res: Response) => {
  * GET /channels/meta/status
  * Returns current Meta Business Suite connection status, linked assets, and sub-channel states
  */
-router.get("/channels/meta/status", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/channels/meta/status", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
   const configured = Boolean(appId && appSecret);
 
-  const creds = await getChannelCredentials("meta_business");
+  const creds = await getChannelCredentials("meta_business", storeId);
   const isConnected = Boolean(creds.master_access_token && creds.master_access_token.length > 5);
 
   let discoveredAssets: DiscoveredAssets = {
@@ -1090,15 +1104,15 @@ router.get("/channels/meta/status", requireAdmin, async (_req: Request, res: Res
 
   // Check sub-channel status
   const subChannels = ["facebook", "instagram", "commerce", "ads", "whatsapp"];
-  const configs = await db.select().from(channelConfigsTable);
+  const configs = await db.select().from(channelConfigsTable).where(eq(channelConfigsTable.storeId, storeId));
   const configMap = new Map<string, { status: string }>(configs.map((c) => [c.channelId, c]));
 
   const [fbCreds, igCreds, commCreds, adsCreds, waCreds] = await Promise.all([
-    getChannelCredentials("facebook"),
-    getChannelCredentials("instagram"),
-    getChannelCredentials("commerce"),
-    getChannelCredentials("ads"),
-    getChannelCredentials("whatsapp"),
+    getChannelCredentials("facebook", storeId),
+    getChannelCredentials("instagram", storeId),
+    getChannelCredentials("commerce", storeId),
+    getChannelCredentials("ads", storeId),
+    getChannelCredentials("whatsapp", storeId),
   ]);
 
   const channelsStatus = {
@@ -1152,28 +1166,30 @@ router.get("/channels/meta/status", requireAdmin, async (_req: Request, res: Res
  * POST /channels/meta/sync-assets
  * Re-queries Meta Graph API with master token to refresh all assets
  */
-router.post("/channels/meta/sync-assets", requireAdmin, async (req: Request, res: Response) => {
-  const creds = await getChannelCredentials("meta_business");
+router.post("/channels/meta/sync-assets", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const creds = await getChannelCredentials("meta_business", storeId);
   if (!creds.master_access_token) {
     return res.status(400).json({ error: "Meta Business Suite is not connected." });
   }
 
   // If connected via dev sandbox
   if (creds.master_access_token === "dev_mock_master_token") {
-    await addEvent("meta_business", "Assets Re-synchronized", "Sandbox assets verified.", "sync", await auditActor(req));
+    await addEvent("meta_business", "Assets Re-synchronized", "Sandbox assets verified.", "sync", storeId, await auditActor(req));
     return res.json({ ok: true, message: "Sandbox assets refreshed." });
   }
 
   try {
-    const discoveredAssets = await discoverMetaAssets(creds.master_access_token);
+    const discoveredAssets = await discoverMetaAssets(creds.master_access_token, storeId);
     await provisionDiscoveredAssets(
       discoveredAssets,
       creds.master_access_token,
       creds.expires_at || new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
+      storeId,
       { id: creds.user_id, name: creds.user_name }
     );
 
-    await addEvent("meta_business", "Assets Re-synchronized", `Discovered ${discoveredAssets.pages.length} Pages, ${discoveredAssets.catalogs.length} Catalogs, ${discoveredAssets.whatsappAccounts.length} WhatsApp accounts, ${discoveredAssets.adAccounts.length} Ad accounts, ${discoveredAssets.pixels.length} Pixels.`, "sync", await auditActor(req));
+    await addEvent("meta_business", "Assets Re-synchronized", `Discovered ${discoveredAssets.pages.length} Pages, ${discoveredAssets.catalogs.length} Catalogs, ${discoveredAssets.whatsappAccounts.length} WhatsApp accounts, ${discoveredAssets.adAccounts.length} Ad accounts, ${discoveredAssets.pixels.length} Pixels.`, "sync", storeId, await auditActor(req));
 
     return res.json({ ok: true, assets: discoveredAssets });
   } catch (err) {
@@ -1187,7 +1203,8 @@ router.post("/channels/meta/sync-assets", requireAdmin, async (req: Request, res
  * Directly queries Meta Graph API for a specific Catalog ID, validates permissions,
  * adds it to discovered assets, and immediately provisions/links it to Commerce & Facebook.
  */
-router.post("/channels/meta/fetch-catalog", requireAdmin, async (req: Request, res: Response) => {
+router.post("/channels/meta/fetch-catalog", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { catalogId } = req.body as { catalogId?: string };
   const cleanId = (catalogId || "").trim();
 
@@ -1195,7 +1212,7 @@ router.post("/channels/meta/fetch-catalog", requireAdmin, async (req: Request, r
     return res.status(400).json({ error: "Catalog ID is required." });
   }
 
-  const metaCreds = await getChannelCredentials("meta_business");
+  const metaCreds = await getChannelCredentials("meta_business", storeId);
   const masterToken = metaCreds["master_access_token"];
 
   if (!masterToken) {
@@ -1236,10 +1253,10 @@ router.post("/channels/meta/fetch-catalog", requireAdmin, async (req: Request, r
     await persistCredentials("meta_business", {
       ...metaCreds,
       discovered_assets: JSON.stringify(assets),
-    });
+    }, storeId);
 
-    const commCreds = await getChannelCredentials("commerce");
-    const fbCreds = await getChannelCredentials("facebook");
+    const commCreds = await getChannelCredentials("commerce", storeId);
+    const fbCreds = await getChannelCredentials("facebook", storeId);
     const token = fbCreds["page_access_token"] || masterToken;
 
     await persistCredentials("commerce", {
@@ -1248,20 +1265,21 @@ router.post("/channels/meta/fetch-catalog", requireAdmin, async (req: Request, r
       catalog_name: catalog.name,
       page_access_token: token,
       source: "meta_business",
-    });
+    }, storeId);
 
     if (fbCreds["page_id"]) {
       await persistCredentials("facebook", {
         ...fbCreds,
         catalog_id: catalog.id,
         catalog_name: catalog.name,
-      });
+      }, storeId);
     }
 
     const now = new Date();
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "commerce",
         status: "CONNECTED",
         latency: 110,
@@ -1269,18 +1287,18 @@ router.post("/channels/meta/fetch-catalog", requireAdmin, async (req: Request, r
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
     await db.insert(facebookConnectionsTable)
-      .values({ id: randomUUID(), connectionKey: "commerce", active: true, updatedAt: now })
+      .values({ id: randomUUID(), storeId, connectionKey: "commerce", active: true, updatedAt: now })
       .onConflictDoUpdate({
-        target: facebookConnectionsTable.connectionKey,
+        target: [facebookConnectionsTable.storeId, facebookConnectionsTable.connectionKey],
         set: { active: true, updatedAt: now },
       });
 
-    await addEvent("commerce", "Meta Catalog Linked via Direct Fetch", `Catalog "${catalog.name}" (ID: ${catalog.id}) fetched and activated.`, "sync", await auditActor(req));
+    await addEvent("commerce", "Meta Catalog Linked via Direct Fetch", `Catalog "${catalog.name}" (ID: ${catalog.id}) fetched and activated.`, "sync", storeId, await auditActor(req));
 
     return res.json({ ok: true, catalog, message: `Catalog "${catalog.name}" (${catalog.id}) successfully fetched and linked.` });
   } catch (err) {
@@ -1295,14 +1313,15 @@ router.post("/channels/meta/fetch-catalog", requireAdmin, async (req: Request, r
  * POST /channels/meta/select-asset
  * Selects an active asset (e.g. switch active Page, Catalog, WhatsApp phone, Ad Account, or Pixel)
  */
-router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, res: Response) => {
+router.post("/channels/meta/select-asset", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const { assetType, assetId, subId } = req.body as {
     assetType: "page" | "catalog" | "whatsapp" | "adAccount" | "pixel";
     assetId: string;
     subId?: string;
   };
 
-  const creds = await getChannelCredentials("meta_business");
+  const creds = await getChannelCredentials("meta_business", storeId);
   if (!creds.discovered_assets) {
     return res.status(400).json({ error: "No discovered assets available." });
   }
@@ -1319,11 +1338,12 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
       page_name: page.name,
       page_access_token: page.accessToken,
       source: "meta_business",
-    });
+    }, storeId);
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "facebook",
         status: "CONNECTED",
         latency: 120,
@@ -1331,15 +1351,15 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
     // Ensure connection is marked as active in facebook_connections table
     await db.insert(facebookConnectionsTable)
-      .values({ id: randomUUID(), connectionKey: "facebook", active: true, updatedAt: now })
+      .values({ id: randomUUID(), storeId, connectionKey: "facebook", active: true, updatedAt: now })
       .onConflictDoUpdate({
-        target: facebookConnectionsTable.connectionKey,
+        target: [facebookConnectionsTable.storeId, facebookConnectionsTable.connectionKey],
         set: { active: true, updatedAt: now },
       });
 
@@ -1349,11 +1369,12 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
         ig_username: page.instagramAccount.username,
         page_access_token: page.accessToken,
         source: "meta_business",
-      });
+      }, storeId);
 
       await db.insert(channelConfigsTable)
         .values({
           id: randomUUID(),
+          storeId,
           channelId: "instagram",
           status: "CONNECTED",
           latency: 140,
@@ -1361,22 +1382,22 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: channelConfigsTable.channelId,
+          target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
           set: { status: "CONNECTED", lastSync: now, updatedAt: now },
         });
 
       // Ensure instagram connection is marked as active
       await db.insert(facebookConnectionsTable)
-        .values({ id: randomUUID(), connectionKey: "instagram", active: true, updatedAt: now })
+        .values({ id: randomUUID(), storeId, connectionKey: "instagram", active: true, updatedAt: now })
         .onConflictDoUpdate({
-          target: facebookConnectionsTable.connectionKey,
+          target: [facebookConnectionsTable.storeId, facebookConnectionsTable.connectionKey],
           set: { active: true, updatedAt: now },
         });
 
-      await addEvent("instagram", "Active Instagram Account Linked", `Linked Instagram Account "@${page.instagramAccount.username}" via page "${page.name}"`, "sync", await auditActor(req));
+      await addEvent("instagram", "Active Instagram Account Linked", `Linked Instagram Account "@${page.instagramAccount.username}" via page "${page.name}"`, "sync", storeId, await auditActor(req));
     }
 
-    await addEvent("facebook", "Active Page Selected", `Switched active page to "${page.name}" (ID: ${page.id})`, "info", await auditActor(req));
+    await addEvent("facebook", "Active Page Selected", `Switched active page to "${page.name}" (ID: ${page.id})`, "info", storeId, await auditActor(req));
   } else if (assetType === "catalog") {
     let catalog = assets.catalogs.find((c) => c.id === assetId);
 
@@ -1397,24 +1418,25 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
           await persistCredentials("meta_business", {
             ...creds,
             discovered_assets: JSON.stringify(assets),
-          });
+          }, storeId);
         }
       } catch {}
     }
 
     if (!catalog) return res.status(404).json({ error: "Catalog not found in discovered assets or Meta Graph API." });
 
-    const existingComm = await getChannelCredentials("commerce");
+    const existingComm = await getChannelCredentials("commerce", storeId);
     await persistCredentials("commerce", {
       ...existingComm,
       catalog_id: catalog.id,
       catalog_name: catalog.name,
       source: "meta_business",
-    });
+    }, storeId);
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "commerce",
         status: "CONNECTED",
         latency: 110,
@@ -1422,27 +1444,27 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
     await db.insert(facebookConnectionsTable)
-      .values({ id: randomUUID(), connectionKey: "commerce", active: true, updatedAt: now })
+      .values({ id: randomUUID(), storeId, connectionKey: "commerce", active: true, updatedAt: now })
       .onConflictDoUpdate({
-        target: facebookConnectionsTable.connectionKey,
+        target: [facebookConnectionsTable.storeId, facebookConnectionsTable.connectionKey],
         set: { active: true, updatedAt: now },
       });
 
-    const existingFb = await getChannelCredentials("facebook");
+    const existingFb = await getChannelCredentials("facebook", storeId);
     if (existingFb["page_id"]) {
       await persistCredentials("facebook", {
         ...existingFb,
         catalog_id: catalog.id,
         catalog_name: catalog.name,
-      });
+      }, storeId);
     }
 
-    await addEvent("commerce", "Active Catalog Selected", `Switched active catalog to "${catalog.name}" (ID: ${catalog.id})`, "info", await auditActor(req));
+    await addEvent("commerce", "Active Catalog Selected", `Switched active catalog to "${catalog.name}" (ID: ${catalog.id})`, "info", storeId, await auditActor(req));
   } else if (assetType === "whatsapp") {
     const waba = assets.whatsappAccounts.find((w) => w.id === assetId);
     if (!waba) return res.status(404).json({ error: "WhatsApp account not found." });
@@ -1450,7 +1472,7 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
     const phone = subId ? waba.phones.find((p) => p.id === subId) : waba.phones[0];
     if (!phone) return res.status(404).json({ error: "WhatsApp phone number not found." });
 
-    const existingWa = await getChannelCredentials("whatsapp");
+    const existingWa = await getChannelCredentials("whatsapp", storeId);
     const verifyToken = existingWa["webhook_verify_token"] || `verify_${randomUUID().slice(0, 8)}`;
 
     await persistCredentials("whatsapp", {
@@ -1461,11 +1483,12 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
       system_access_token: creds.master_access_token || "",
       webhook_verify_token: verifyToken,
       source: "meta_business",
-    });
+    }, storeId);
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "whatsapp",
         status: "CONNECTED",
         latency: 130,
@@ -1473,11 +1496,11 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
-    await addEvent("whatsapp", "Active Phone Selected", `Switched WhatsApp number to ${phone.displayPhoneNumber}`, "info", await auditActor(req));
+    await addEvent("whatsapp", "Active Phone Selected", `Switched WhatsApp number to ${phone.displayPhoneNumber}`, "info", storeId, await auditActor(req));
   } else if (assetType === "adAccount") {
     const ad = assets.adAccounts.find((a) => a.id === assetId || a.accountId === assetId);
     if (!ad) return res.status(404).json({ error: "Ad account not found." });
@@ -1487,11 +1510,12 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
       ad_account_name: ad.name,
       page_access_token: creds.master_access_token || "",
       source: "meta_business",
-    });
+    }, storeId);
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId: "ads",
         status: "CONNECTED",
         latency: 115,
@@ -1499,43 +1523,43 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.storeId, channelConfigsTable.channelId],
         set: { status: "CONNECTED", lastSync: now, updatedAt: now },
       });
 
-    await addEvent("ads", "Active Ad Account Selected", `Switched active ad account to "${ad.name}"`, "info", await auditActor(req));
+    await addEvent("ads", "Active Ad Account Selected", `Switched active ad account to "${ad.name}"`, "info", storeId, await auditActor(req));
   } else if (assetType === "pixel") {
     const pixel = assets.pixels?.find((p) => p.id === assetId);
     if (!pixel) return res.status(404).json({ error: "Pixel not found in discovered assets." });
 
-    const existingFb = await getChannelCredentials("facebook");
+    const existingFb = await getChannelCredentials("facebook", storeId);
     await persistCredentials("facebook", {
       ...existingFb,
       pixel_id: pixel.id,
       source: existingFb["source"] || "meta_business",
-    });
+    }, storeId);
 
-    const existingAds = await getChannelCredentials("ads");
+    const existingAds = await getChannelCredentials("ads", storeId);
     await persistCredentials("ads", {
       ...existingAds,
       pixel_id: pixel.id,
       source: existingAds["source"] || "meta_business",
-    });
+    }, storeId);
 
     await db.insert(facebookConnectionsTable)
-      .values({ id: randomUUID(), connectionKey: "pixel", active: true, updatedAt: now })
+      .values({ id: randomUUID(), storeId, connectionKey: "pixel", active: true, updatedAt: now })
       .onConflictDoUpdate({
-        target: facebookConnectionsTable.connectionKey,
+        target: [facebookConnectionsTable.storeId, facebookConnectionsTable.connectionKey],
         set: { active: true, updatedAt: now },
       });
 
-    await addEvent("facebook", "Active Pixel Selected", `Switched active Meta Pixel to "${pixel.name}" (ID: ${pixel.id})`, "info", await auditActor(req));
+    await addEvent("facebook", "Active Pixel Selected", `Switched active Meta Pixel to "${pixel.name}" (ID: ${pixel.id})`, "info", storeId, await auditActor(req));
   }
 
   // Update meta_business channel config to reflect latest activity
   await db.update(channelConfigsTable)
     .set({ lastSync: now, updatedAt: now })
-    .where(eq(channelConfigsTable.channelId, "meta_business"));
+    .where(and(eq(channelConfigsTable.channelId, "meta_business"), eq(channelConfigsTable.storeId, storeId)));
 
   return res.json({ ok: true });
 });
@@ -1544,37 +1568,40 @@ router.post("/channels/meta/select-asset", requireAdmin, async (req: Request, re
  * POST /channels/meta/disconnect
  * Disconnects Meta Business Suite and resets auto-provisioned channels
  */
-router.post("/channels/meta/disconnect", requireAdmin, async (req: Request, res: Response) => {
+router.post("/channels/meta/disconnect", requireAdmin, async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   // Completely remove the meta_business credentials row
   await db.delete(channelCredentialsTable)
-    .where(eq(channelCredentialsTable.channel, "meta_business"));
+    .where(and(eq(channelCredentialsTable.channel, "meta_business"), eq(channelCredentialsTable.storeId, storeId)));
 
   // Reset any channels whose credentials came from meta_business
   const subChannels = ["facebook", "instagram", "commerce", "ads", "whatsapp"];
   for (const ch of subChannels) {
-    const chCreds = await getChannelCredentials(ch);
+    const chCreds = await getChannelCredentials(ch, storeId);
     if (chCreds.source === "meta_business") {
       // Remove sub-channel credentials if they were linked
       await db.delete(channelCredentialsTable)
-        .where(eq(channelCredentialsTable.channel, ch));
+        .where(and(eq(channelCredentialsTable.channel, ch), eq(channelCredentialsTable.storeId, storeId)));
       
       await db.update(channelConfigsTable)
         .set({ status: "DISCONNECTED", latency: 0, updatedAt: new Date() })
-        .where(eq(channelConfigsTable.channelId, ch));
+        .where(and(eq(channelConfigsTable.channelId, ch), eq(channelConfigsTable.storeId, storeId)));
       
-      await addEvent(ch, "Disconnected via Meta Business Suite", "Channel credentials removed and unlinked as master account was disconnected.", "warning", await auditActor(req));
+      await addEvent(ch, "Disconnected via Meta Business Suite", "Channel credentials removed and unlinked as master account was disconnected.", "warning", storeId, await auditActor(req));
     }
   }
 
   // Deactivate all facebook connections to ensure a clean slate
   await db.update(facebookConnectionsTable)
-    .set({ active: false, updatedAt: new Date() });
+    .set({ active: false, updatedAt: new Date() })
+    .where(eq(facebookConnectionsTable.storeId, storeId));
 
   await addEvent(
     "system",
     "Meta Suite Disconnected",
     "Meta Business Suite disconnected and credentials removed from database.",
     "warning",
+    storeId,
     await auditActor(req)
   );
 

@@ -3,8 +3,10 @@ import { Link } from "wouter";
 import { motion } from "motion/react";
 import ProductCard from "@/components/ProductCard";
 import { SEO } from "@/components/SEO";
+import { useBranding } from "@/contexts/BrandingContext";
 
 export default function ProductsPage() {
+  const { branding, activeSlug } = useBranding();
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -18,8 +20,12 @@ export default function ProductsPage() {
     if (newParam === "true") setNewOnly(true);
 
     const fetchData = async () => {
-      const productsUrl = newParam === "true" ? "/api/products?new=true" : "/api/products";
-      const [resP, resC] = await Promise.all([fetch(productsUrl), fetch("/api/categories")]);
+      const storeParam = activeSlug ? `store=${encodeURIComponent(activeSlug)}` : "";
+      const baseProductUrl = newParam === "true" ? "/api/products?new=true" : "/api/products";
+      const productsUrl = storeParam ? `${baseProductUrl}${baseProductUrl.includes("?") ? "&" : "?"}${storeParam}` : baseProductUrl;
+      const categoriesUrl = storeParam ? `/api/categories?${storeParam}` : "/api/categories";
+
+      const [resP, resC] = await Promise.all([fetch(productsUrl), fetch(categoriesUrl)]);
       const productsData = await resP.json();
       const categoriesData = await resC.json();
       setProducts(Array.isArray(productsData) ? productsData : []);
@@ -31,15 +37,15 @@ export default function ProductsPage() {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [activeSlug]);
 
   const filteredProducts = selectedCategory === "all" ? products : products.filter((p: any) => p.categoryId === selectedCategory);
 
   return (
     <div className="bg-white min-h-screen">
       <SEO
-        title={selectedCategory !== "all" ? `${categories.find(c => c.id === selectedCategory)?.name || "Collections"} — LUXE BOUTIQUE` : "Haute Couture Collections — LUXE BOUTIQUE"}
-        description="Browse our complete catalog of designer clothing, luxury shoes, handcrafted accessories, and seasonal runway pieces."
+        title={selectedCategory !== "all" ? `${categories.find(c => c.id === selectedCategory)?.name || "Collections"} — ${branding.store_name}` : `Collections — ${branding.store_name}`}
+        description={`Browse our complete catalog of designer apparel, curated pieces, and bespoke items at ${branding.store_name}.`}
       />
       <section className="relative h-[45vh] w-full flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">

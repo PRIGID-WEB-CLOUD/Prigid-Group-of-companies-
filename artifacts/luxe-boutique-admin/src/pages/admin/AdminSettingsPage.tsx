@@ -66,67 +66,42 @@ const MASK = "●●●●●●●●●●●●";
 type CredField = { key: string; label: string; isSecret: boolean; hint: string };
 
 function ChannelCredsPanel({
-  channel, fields, icon, title, description, docsSteps, savedSection, onSaved, revocable = false,
+  channel, fields, icon, title, description,
 }: {
   channel: string;
   fields: CredField[];
   icon: any;
   title: string;
   description: string;
-  docsSteps: { step: string; title: string; body: string }[];
-  savedSection: Section | null;
-  onSaved: () => void;
-  revocable?: boolean;
 }) {
   const [saved,  setSaved]  = useState<Record<string, string>>({});
-  const [dirty,  setDirty]  = useState<Record<string, string>>({});
-  const [show,   setShow]   = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ pass: boolean; latency: number } | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/channels/credentials/${channel}`);
-    if (res.ok) { const d = await res.json(); setSaved(d); setDirty(d); }
+    if (res.ok) { const d = await res.json(); setSaved(d); }
   }, [channel]);
 
   useEffect(() => { load(); }, [load]);
 
+  const test = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const start = Date.now();
+      const res = await fetch(`/api/channels/test/${channel}`, { method: "POST" });
+      const latency = Date.now() - start;
+      setTestResult({ pass: res.ok, latency });
+    } catch {
+      setTestResult({ pass: false, latency: 0 });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const configuredCount = fields.filter(f => !!saved[f.key]).length;
   const allConfigured   = configuredCount === fields.length;
-
-  const save = async () => {
-    setSaving(true);
-    await fetch(`/api/channels/credentials/${channel}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(dirty),
-    });
-    setSaved(dirty);
-    setSaving(false);
-    setNotice("Credentials saved.");
-    setTimeout(() => setNotice(null), 3000);
-    onSaved();
-  };
-
-  const test = async () => {
-    setTesting(true); setTestResult(null);
-    const res = await fetch(`/api/channels/configs/${channel}/test`, { method: "POST" });
-    if (res.ok) setTestResult(await res.json());
-    setTesting(false);
-  };
-
-  const revoke = async () => {
-    setSaving(true);
-    await fetch(`/api/channels/credentials/${channel}`, { method: "DELETE" });
-    setSaved({});
-    setDirty({});
-    setSaving(false);
-    setNotice("Credentials revoked.");
-    setTimeout(() => setNotice(null), 3000);
-    onSaved();
-  };
 
   return (
     <div className="bg-white rounded-xl shadow-[0px_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
@@ -140,114 +115,35 @@ function ChannelCredsPanel({
             <p className="text-xs font-[Manrope] text-[#7c839b] mt-0.5">{description}</p>
           </div>
         </div>
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-[Manrope] font-bold uppercase tracking-widest ${
-          allConfigured ? "text-[#006c49] bg-[#e6f7f1]" : "text-[#7c839b] bg-[#f0f2ff]"
-        }`}>
-          {allConfigured ? <MdCheckCircle className="text-[12px]" /> : <MdRadioButtonUnchecked className="text-[12px]" />}
-          {configuredCount}/{fields.length} Configured
-        </span>
+        <StatusBadge ok={allConfigured} label={allConfigured ? "Platform Configured" : "Not Set"} />
       </div>
 
-      <div className="grid grid-cols-12 gap-0">
-        {/* Fields */}
-        <div className="col-span-12 lg:col-span-7 p-8 space-y-5 border-r border-[#f0f2ff]">
-          {fields.map(f => {
-            const val    = dirty[f.key] ?? "";
-            const svd    = saved[f.key] ?? "";
-            const isDirty = val !== svd;
-            const visible = show[f.key];
-            return (
-              <div key={f.key}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[10px] font-[Manrope] font-bold uppercase tracking-widest text-[#45464d]">{f.label}</label>
-                  <div className="flex items-center gap-2">
-                    {isDirty && val !== "" && <span className="text-[9px] font-[Manrope] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Unsaved</span>}
-                    {!isDirty && svd && <span className="text-[9px] font-[Manrope] font-bold uppercase tracking-widest text-[#006c49] bg-[#f0faf6] px-2 py-0.5 rounded-full flex items-center gap-1"><MdCheckCircle className="text-[10px]" />Saved</span>}
-                  </div>
-                </div>
-                <div className="relative">
-                  <input
-                    type={f.isSecret && !visible ? "password" : "text"}
-                    value={val}
-                    onChange={e => setDirty(p => ({ ...p, [f.key]: e.target.value }))}
-                    placeholder={f.isSecret ? "••••••••••••••••" : `Enter ${f.label}…`}
-                    className={`w-full bg-[#f8f9ff] border rounded-lg px-4 py-3 font-[Manrope] text-sm outline-none transition-colors pr-20 ${
-                      isDirty && val !== "" ? "border-amber-300 focus:border-amber-500" : "border-[#c6c6cd] focus:border-black"
-                    }`}
-                  />
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    {f.isSecret && (
-                      <button onClick={() => setShow(p => ({ ...p, [f.key]: !p[f.key] }))} className="p-1 text-[#7c839b] hover:text-black transition-colors">
-                        {visible ? <MdVisibilityOff className="text-sm" /> : <MdVisibility className="text-sm" />}
-                      </button>
-                    )}
-                    {val && (
-                      <button onClick={() => navigator.clipboard.writeText(val)} className="p-1 text-[#7c839b] hover:text-[#006c49] transition-colors">
-                        <MdContentCopy className="text-sm" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <p className="mt-1 text-[11px] font-[Manrope] text-[#7c839b] italic">{f.hint}</p>
-              </div>
-            );
-          })}
-
-          {notice && (
-            <div className="p-3 bg-[#e6f7f1] text-[#006c49] rounded-lg flex items-center gap-2 text-sm font-[Manrope] font-bold">
-              <MdCheckCircle className="text-base" />{notice}
-            </div>
-          )}
-          {testResult && (
-            <div className={`p-3 rounded-lg flex items-center gap-2 text-sm font-[Manrope] font-bold ${testResult.pass ? "bg-[#e6f7f1] text-[#006c49]" : "bg-[#ffdad6] text-[#ba1a1a]"}`}>
-              {testResult.pass ? <MdCheckCircle className="text-base" /> : <MdError className="text-base" />}
-              {testResult.pass ? `Connection successful — ${testResult.latency}ms` : "Connection failed — check your credentials."}
-            </div>
-          )}
+      <div className="p-8">
+        <div className="p-5 bg-[#f8f9ff] border border-[#e5eeff] rounded-xl flex items-start gap-4">
+          <MdShield className="text-[#006c49] text-2xl mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+            <p className="text-xs font-[Manrope] text-[#7c839b] leading-relaxed">
+              Sensitive credentials for {title} are now managed exclusively via server-side environment variables in this CaaS environment. 
+              Direct editing in the seller panel has been disabled to enhance security and prevent accidental exposure.
+            </p>
+          </div>
         </div>
 
-        {/* Docs guide */}
-        <div className="col-span-12 lg:col-span-5 p-8 space-y-4">
-          <h4 className="font-serif font-semibold flex items-center gap-2 text-sm">
-            <MdHelp className="text-[#006c49] text-base" />
-            Where to find your credentials
-          </h4>
-          {docsSteps.map(s => (
-            <div key={s.step} className="flex gap-3">
-              <span className="w-5 h-5 rounded-full bg-[#006c49] text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{s.step}</span>
-              <div>
-                <p className="font-[Manrope] font-bold text-sm mb-0.5">{s.title}</p>
-                <p className="text-xs text-[#7c839b] font-[Manrope]">{s.body}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        {testResult && (
+          <div className={`mt-4 p-3 rounded-lg flex items-center gap-2 text-sm font-[Manrope] font-bold ${testResult.pass ? "bg-[#e6f7f1] text-[#006c49]" : "bg-[#ffdad6] text-[#ba1a1a]"}`}>
+            {testResult.pass ? <MdCheckCircle className="text-base" /> : <MdError className="text-base" />}
+            {testResult.pass ? `Connection successful — ${testResult.latency}ms` : "Connection failed — please verify environment variables."}
+          </div>
+        )}
       </div>
 
-      <div className="px-8 py-5 border-t border-[#e5eeff] bg-[#f8f9ff] flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          {revocable && (
-            <button onClick={revoke} disabled={saving}
-              className="px-5 py-2 border border-red-200 text-red-600 bg-red-50 font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-red-100 transition-all rounded-lg flex items-center gap-2 disabled:opacity-60">
-              <MdBlock className="text-sm" />
-              Revoke
-            </button>
-          )}
-          <button onClick={test} disabled={testing}
-            className="px-5 py-2 border border-[#c6c6cd] font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-white transition-all rounded-lg flex items-center gap-2 disabled:opacity-60">
-            <div className={`text-sm ${testing ? "animate-spin" : ""}`}>{testing ? <MdAutorenew /> : <MdWifiTethering />}</div>
-            {testing ? "Testing…" : "Test Connection"}
-          </button>
-          <button onClick={save} disabled={saving}
-            className="px-8 py-2.5 bg-black text-white font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-[#006c49] transition-all rounded-lg shadow disabled:opacity-60 flex items-center gap-2">
-            {saving
-              ? <><MdAutorenew className="text-sm animate-spin" /> Saving…</>
-              : notice
-                ? <><MdCheck className="text-sm" /> Saved!</>
-                : "Save Credentials"
-            }
-          </button>
-        </div>
+      <div className="px-8 py-5 border-t border-[#e5eeff] bg-[#f8f9ff] flex items-center justify-end gap-4">
+        <button onClick={test} disabled={testing}
+          className="px-5 py-2 border border-[#c6c6cd] font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-white transition-all rounded-lg flex items-center gap-2 disabled:opacity-60">
+          <div className={`text-sm ${testing ? "animate-spin" : ""}`}>{testing ? <MdAutorenew /> : <MdWifiTethering />}</div>
+          {testing ? "Testing…" : "Test Connection"}
+        </button>
       </div>
     </div>
   );
@@ -706,6 +602,11 @@ export default function AdminSettingsPage() {
   const [storeEmail,    setStoreEmail]    = useState("");
   const [storeCurrency, setStoreCurrency] = useState("USD");
   const [storeTimezone, setStoreTimezone] = useState("UTC");
+  const [storeSubdomain, setStoreSubdomain] = useState("");
+  const [storeCustomDomain, setStoreCustomDomain] = useState("");
+  const [storeIsPublished, setStoreIsPublished] = useState(false);
+  const [domainError, setDomainError] = useState<string | null>(null);
+  const [savingDomain, setSavingDomain] = useState(false);
 
   const [brandPrimaryColor, setBrandPrimaryColor] = useState("#006c49");
   const [brandBgColor, setBrandBgColor] = useState("#0f172a");
@@ -790,6 +691,23 @@ export default function AdminSettingsPage() {
     },
   });
 
+  const { data: domainData, refetch: refetchDomain } = useQuery({
+    queryKey: ["tenant-domain"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings/tenant-domain");
+      if (!res.ok) throw new Error("Failed to load domain settings");
+      return res.json() as Promise<{ slug: string; customDomain: string; isPublished: boolean }>;
+    }
+  });
+
+  useEffect(() => {
+    if (domainData) {
+      setStoreSubdomain(domainData.slug || "");
+      setStoreCustomDomain(domainData.customDomain || "");
+      setStoreIsPublished(domainData.isPublished || false);
+    }
+  }, [domainData]);
+
   useEffect(() => {
     if (!data) return;
     const s = data.settings;
@@ -854,17 +772,31 @@ export default function AdminSettingsPage() {
     setTestEmailResult(null);
   };
 
-  const saveCloudinary = () => {
-    pendingSectionRef.current = "cloudinary";
-    saveMutation.mutate({
-      cloudinary_cloud_name: cloudName, cloudinary_api_key: cloudApiKey,
-      cloudinary_api_secret: cloudSecret, cloudinary_upload_preset: cloudPreset,
-    });
-    setTestCloudResult(null);
-  };
-
-  const saveStore = () => {
+  const saveStore = async () => {
     pendingSectionRef.current = "store";
+    setDomainError(null);
+    setSavingDomain(true);
+
+    try {
+      const res = await fetch("/api/settings/tenant-domain", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: storeSubdomain, customDomain: storeCustomDomain, isPublished: storeIsPublished }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        setDomainError(errData.error || "Failed to save domain details.");
+        setSavingDomain(false);
+        return;
+      }
+      refetchDomain();
+    } catch (err: any) {
+      setDomainError(err.message || "Failed to save domain details.");
+      setSavingDomain(false);
+      return;
+    }
+
+    setSavingDomain(false);
     saveMutation.mutate({
       store_name: storeName, store_email: storeEmail,
       store_currency: storeCurrency, store_timezone: storeTimezone,
@@ -880,50 +812,6 @@ export default function AdminSettingsPage() {
       brand_typography: brandTypography,
       brand_valet_instructions: brandValetInstructions,
       brand_hospitality_notes: brandHospitalityNotes,
-    });
-  };
-
-  const savePayments = () => {
-    pendingSectionRef.current = "payments";
-    saveMutation.mutate({
-      paystack_public_key:     paystackPublicKey,
-      paystack_secret_key:     paystackSecretKey,
-      flutterwave_public_key:  flutterwavePublicKey,
-      flutterwave_secret_key:  flutterwaveSecretKey,
-      paypal_client_id:        paypalClientId,
-      paypal_secret:           paypalSecret,
-      paypal_mode:             paypalMode,
-      paypal_pay_in_4:         String(paypalPayIn4),
-    });
-  };
-
-  const saveKlaviyo = () => {
-    pendingSectionRef.current = "klaviyo";
-    saveMutation.mutate({
-      klaviyo_api_key: klaviyoApiKey,
-      klaviyo_public_list_id: klaviyoPublicListId,
-      klaviyo_sms_sender_number: klaviyoSmsSender,
-      klaviyo_enabled: "true",
-    });
-  };
-
-  const saveGa4 = () => {
-    pendingSectionRef.current = "ga4";
-    saveMutation.mutate({
-      ga4_measurement_id: ga4MeasurementId,
-      ga4_api_secret: ga4ApiSecret,
-      ga4_enabled: "true",
-    });
-  };
-
-  const saveDhl = () => {
-    pendingSectionRef.current = "dhl";
-    saveMutation.mutate({
-      dhl_site_id: dhlSiteId,
-      dhl_password: dhlPassword,
-      dhl_account_number: dhlAccountNumber,
-      dhl_test_mode: String(dhlTestMode),
-      dhl_enabled: "true",
     });
   };
 
@@ -1135,24 +1023,20 @@ export default function AdminSettingsPage() {
                       <StatusBadge ok={cloud} label="" />
                     </div>
 
-                    <div className="p-8 space-y-5">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        <div className="sm:col-span-2">
-                          <Field label="Cloud Name" value={cloudName} onChange={setCloudName} placeholder="my-cloud-name" />
-                        </div>
-                        <Field label="API Key" value={cloudApiKey} onChange={setCloudApiKey}
-                          placeholder="123456789012345" />
-                        <Field label="API Secret" value={cloudSecret} onChange={setCloudSecret}
-                          placeholder="••••••••" masked onReveal={() => setCloudSecret("")} />
-                        <div className="sm:col-span-2">
-                          <Field label="Upload Preset (optional)" value={cloudPreset} onChange={setCloudPreset}
-                            placeholder="luxe_products"
-                            hint="Create an unsigned upload preset in Cloudinary Settings → Upload → Upload presets." />
+                    <div className="p-8">
+                      <div className="p-5 bg-[#f8f9ff] border border-[#e5eeff] rounded-xl flex items-start gap-4">
+                        <MdShield className="text-[#006c49] text-2xl mt-0.5 shrink-0" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                          <p className="text-xs font-[Manrope] text-[#7c839b] leading-relaxed">
+                            Cloudinary credentials (Cloud Name, API Key, and Secret) are managed via server-side environment variables in this CaaS environment. 
+                            Manual overrides are disabled for security.
+                          </p>
                         </div>
                       </div>
 
                       {testCloudResult && (
-                        <div className={`p-4 rounded-lg flex items-center gap-3 ${
+                        <div className={`mt-6 p-4 rounded-lg flex items-center gap-3 ${
                           testCloudResult.ok ? "bg-[#e6f7f1] text-[#006c49]" : "bg-[#ffdad6] text-[#ba1a1a]"
                         }`}>
                           {testCloudResult.ok ? <MdCheckCircle className="text-lg" /> : <MdError className="text-lg" />}
@@ -1161,20 +1045,11 @@ export default function AdminSettingsPage() {
                       )}
                     </div>
 
-                    <div className="px-8 py-5 border-t border-[#e5eeff] bg-[#f8f9ff] flex items-center justify-between gap-4">
+                    <div className="px-8 py-5 border-t border-[#e5eeff] bg-[#f8f9ff] flex items-center justify-start">
                       <button onClick={testCloudinary}
                         className="px-5 py-2 border border-[#c6c6cd] font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-white transition-all rounded-lg flex items-center gap-2">
                         <MdWifiTethering className="text-sm" />
                         Test Connection
-                      </button>
-                      <button onClick={saveCloudinary} disabled={saveMutation.isPending}
-                        className="px-8 py-2.5 bg-black text-white font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-[#006c49] transition-all rounded-lg shadow disabled:opacity-60 flex items-center gap-2">
-                        {saveMutation.isPending
-                          ? <><MdAutorenew className="text-sm animate-spin" /> Saving…</>
-                          : savedSection === "cloudinary"
-                            ? <><MdCheck className="text-sm" /> Saved!</>
-                            : "Save Changes"
-                        }
                       </button>
                     </div>
                   </div>
@@ -1218,7 +1093,74 @@ export default function AdminSettingsPage() {
                             ].map(tz => <option key={tz} value={tz}>{tz}</option>)}
                           </select>
                         </div>
+                        <div className="sm:col-span-2 border-t border-[#e5eeff] pt-5">
+                          <h3 className="text-sm font-serif font-bold text-black mb-1">Storefront Publication Status</h3>
+                          <p className="text-xs font-[Manrope] text-[#7c839b] mb-4">Control whether your storefront is visible to the public or in Private Preview.</p>
+                          
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-[#f8f9ff] border border-[#e5eeff] rounded-xl mb-4">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                {storeIsPublished ? (
+                                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold font-[Manrope] bg-green-50 text-green-700 border border-green-200">
+                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                                    Live / Public
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold font-[Manrope] bg-[#fff8eb] text-[#b25e00] border border-[#ffe0b2]">
+                                    <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                                    Private / Unpublished
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 max-w-md font-[Manrope]">
+                                {storeIsPublished 
+                                  ? "Your storefront is publicly accessible. Anyone with the URL or your custom domain can view and purchase from your store." 
+                                  : "Your storefront is restricted. Only logged-in administrators can preview and customize your storefront."}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0">
+                              <a href="/" target="_blank" rel="noopener noreferrer"
+                                className="px-3 py-1.5 bg-white border border-[#c6c6cd] text-slate-700 rounded-lg text-xs font-semibold font-[Manrope] hover:bg-slate-50 transition-all flex items-center gap-1">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                Launch Preview
+                              </a>
+                              
+                              <button type="button" onClick={() => setStoreIsPublished(!storeIsPublished)}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-bold font-[Manrope] tracking-wide transition-all border ${
+                                  storeIsPublished 
+                                    ? "bg-[#ffdad6] hover:bg-[#ffb4ab] text-[#ba1a1a] border-[#ffb4ab]" 
+                                    : "bg-black hover:bg-[#006c49] text-white border-black hover:border-[#006c49]"
+                                }`}>
+                                {storeIsPublished ? "Unpublish Store" : "Publish Storefront"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="sm:col-span-2 border-t border-[#e5eeff] pt-5">
+                          <h3 className="text-sm font-serif font-bold text-black mb-1">SaaS Domain Mapping</h3>
+                          <p className="text-xs font-[Manrope] text-[#7c839b] mb-4">Configure how customers locate your boutique online.</p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Field label="SaaS Platform Subdomain" value={storeSubdomain} onChange={setStoreSubdomain}
+                            placeholder="my-boutique" hint="Your default store URL will be: https://[subdomain].yourplatform.com" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Field label="Custom Domain" value={storeCustomDomain} onChange={setStoreCustomDomain}
+                            placeholder="www.myboutique.com" hint="Configure your DNS record (A / CNAME) to route custom traffic here." />
+                        </div>
                       </div>
+
+                      {domainError && (
+                        <div className="mt-5 p-4 bg-[#ffdad6] text-[#ba1a1a] rounded-lg text-xs font-[Manrope] font-semibold flex items-center gap-2">
+                          <MdError className="text-sm shrink-0" />
+                          <span>{domainError}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="px-8 py-5 border-t border-[#e5eeff] bg-[#f8f9ff] flex justify-end">
@@ -1529,12 +1471,9 @@ export default function AdminSettingsPage() {
                     </div>
                     <ChannelCredsPanel
                       channel="facebook"
-                      icon="public"
+                      icon={<MdPublic />}
                       title="Meta / Facebook"
                       description="Page posts, Pixel events, catalog sync, and ad attribution."
-                      savedSection={savedSection}
-                      onSaved={() => {}}
-                      revocable
                       fields={[
                         { key: "catalog_id",        label: "Commerce Catalog ID",  isSecret: false, hint: "Facebook Commerce Manager → Catalog → Settings → Catalog ID." },
                         { key: "app_id",             label: "App ID",               isSecret: false, hint: "Meta for Developers → App Dashboard → App ID." },
@@ -1542,12 +1481,6 @@ export default function AdminSettingsPage() {
                         { key: "page_access_token",  label: "Page Access Token",    isSecret: true,  hint: "Graph API Explorer → generate a long-lived page token for your Page." },
                         { key: "pixel_id",           label: "Pixel ID",             isSecret: false, hint: "Events Manager → Data Sources → your Pixel → Pixel ID." },
                         { key: "ad_account_id",      label: "Ad Account ID",        isSecret: false, hint: "Meta Business Manager → Ad Accounts (format: act_XXXXXXXXX)." },
-                      ]}
-                      docsSteps={[
-                        { step: "1", title: "Create a Meta App", body: "Go to developers.facebook.com → My Apps → Create App. Choose Business type." },
-                        { step: "2", title: "Add Facebook Login & Commerce", body: "Add the Commerce and Pixel products to your app to unlock catalog and ad APIs." },
-                        { step: "3", title: "Generate a Page Token", body: "Use Graph API Explorer → select your page → generate a long-lived token with pages_manage_posts permission." },
-                        { step: "4", title: "Get your Pixel & Catalog IDs", body: "Events Manager (pixel) and Commerce Manager (catalog) both show their IDs in the Settings tab." },
                       ]}
                     />
                   </div>
@@ -1571,24 +1504,15 @@ export default function AdminSettingsPage() {
                     </div>
                     <ChannelCredsPanel
                       channel="twitter"
-                      icon="alternate_email"
+                      icon={<MdAlternateEmail />}
                       title="X (Twitter)"
                       description="Tweet scheduling, auto-post rules, and product drop announcements."
-                      savedSection={savedSection}
-                      onSaved={() => {}}
-                      revocable
                       fields={[
                         { key: "api_key",             label: "API Key (Consumer Key)",       isSecret: false, hint: "developer.x.com → Your App → Keys & Tokens → API Key." },
                         { key: "api_secret",          label: "API Secret (Consumer Secret)", isSecret: true,  hint: "developer.x.com → Your App → Keys & Tokens → API Secret." },
                         { key: "bearer_token",        label: "Bearer Token",                 isSecret: true,  hint: "Used for App-only read-only API v2 access." },
                         { key: "access_token",        label: "Access Token",                 isSecret: false, hint: "Authorises API calls on behalf of your @luxeboutique X account." },
                         { key: "access_token_secret", label: "Access Token Secret",          isSecret: true,  hint: "Paired with the Access Token. Regenerate if compromised." },
-                      ]}
-                      docsSteps={[
-                        { step: "1", title: "Apply for Elevated Access", body: "developer.x.com → Products → Twitter API v2 → apply for Elevated to unlock write permissions." },
-                        { step: "2", title: "Create a Project & App", body: "Developer Portal → Projects → New Project → New App. This generates your API Key and Secret." },
-                        { step: "3", title: "Enable OAuth 1.0a", body: "App Settings → User authentication settings → enable OAuth 1.0a with Read and Write permissions." },
-                        { step: "4", title: "Generate Access Tokens", body: "Keys & Tokens tab → Access Token and Secret → Generate. These authorise posting as your account." },
                       ]}
                     />
                   </div>
@@ -1612,23 +1536,14 @@ export default function AdminSettingsPage() {
                     </div>
                     <ChannelCredsPanel
                       channel="whatsapp"
-                      icon="chat_bubble"
+                      icon={<MdChatBubble />}
                       title="WhatsApp Cloud API"
                       description="Message templates, automated journeys, and subscriber opt-in flows."
-                      savedSection={savedSection}
-                      onSaved={() => {}}
-                      revocable
                       fields={[
                         { key: "phone_number_id",     label: "Cloud API Phone Number ID",    isSecret: false, hint: "WhatsApp Business Platform → Phone Numbers → Phone Number ID." },
                         { key: "waba_id",             label: "WhatsApp Business Account ID", isSecret: false, hint: "Meta Business Manager → WhatsApp Accounts → Account ID." },
                         { key: "system_access_token", label: "System Access Token",          isSecret: true,  hint: "Meta Business Manager → System Users → Generate Token (never-expiring recommended)." },
                         { key: "webhook_verify_token",label: "Webhook Verify Token",         isSecret: true,  hint: "A secret string you choose — enter the same value in the Meta webhook configuration." },
-                      ]}
-                      docsSteps={[
-                        { step: "1", title: "Create a Meta App", body: "developers.facebook.com → My Apps → Create App → Business type → Add WhatsApp product." },
-                        { step: "2", title: "Add WhatsApp Product", body: "App Dashboard → Add Product → WhatsApp. This generates your Phone Number ID and WABA ID." },
-                        { step: "3", title: "Generate System Token", body: "Meta Business Manager → System Users → Add → assign WhatsApp permissions → Generate Token. Select Never for expiry." },
-                        { step: "4", title: "Configure Webhook", body: "Enter your Webhook Verify Token here and paste the same value in the Meta webhook configuration panel." },
                       ]}
                     />
                   </div>
@@ -1654,30 +1569,15 @@ export default function AdminSettingsPage() {
                           {klaviyoConfigured ? "Connected" : "Not Connected"}
                         </span>
                       </div>
-                      <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        <Field
-                          label="Private API Key"
-                          value={klaviyoApiKey}
-                          onChange={setKlaviyoApiKey}
-                          placeholder="pk_live_…"
-                          masked
-                          onReveal={() => setKlaviyoApiKey("")}
-                          hint="Klaviyo Account → Settings → API Keys → Create Private API Key with Full Access."
-                        />
-                        <Field
-                          label="VIP Subscriber List ID"
-                          value={klaviyoPublicListId}
-                          onChange={setKlaviyoPublicListId}
-                          placeholder="e.g. VIP_LUXE_LIST"
-                          hint="Target List / Segment ID in Klaviyo to receive synced boutique clients."
-                        />
-                        <Field
-                          label="SMS Sender ID / Number"
-                          value={klaviyoSmsSender}
-                          onChange={setKlaviyoSmsSender}
-                          placeholder="LUXE"
-                          hint="Alphanumeric sender ID or toll-free SMS phone number configured in Klaviyo."
-                        />
+                    <div className="p-8 space-y-6">
+                      <div className="p-5 bg-[#f8f9ff] border border-[#e5eeff] rounded-xl flex items-start gap-4">
+                        <MdShield className="text-[#006c49] text-2xl mt-0.5 shrink-0" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                          <p className="text-xs font-[Manrope] text-[#7c839b] leading-relaxed">
+                            Klaviyo API credentials and list IDs are managed via server-side environment variables in this CaaS environment.
+                          </p>
+                        </div>
                       </div>
                       <div className="px-8 py-4 border-t border-[#e5eeff] bg-[#f8f9ff] flex flex-wrap items-center justify-between gap-4">
                         <a href="https://www.klaviyo.com/settings/api-keys" target="_blank" rel="noreferrer"
@@ -1702,18 +1602,8 @@ export default function AdminSettingsPage() {
                         </div>
                       )}
                     </div>
-                    <div className="flex justify-end">
-                      <button onClick={saveKlaviyo} disabled={saveMutation.isPending}
-                        className="px-8 py-2.5 bg-black text-white font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-[#006c49] transition-all rounded-lg shadow disabled:opacity-60 flex items-center gap-2">
-                        {saveMutation.isPending
-                          ? <><MdAutorenew className="text-sm animate-spin" /> Saving…</>
-                          : savedSection === "klaviyo"
-                            ? <><MdCheck className="text-sm" /> Saved!</>
-                            : "Save Klaviyo Configuration"
-                        }
-                      </button>
-                    </div>
                   </div>
+                </div>
                 )}
 
                 {/* ── Google Analytics 4 ── */}
@@ -1736,42 +1626,24 @@ export default function AdminSettingsPage() {
                           {ga4Configured ? "Active" : "Disabled"}
                         </span>
                       </div>
-                      <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        <Field
-                          label="Measurement ID"
-                          value={ga4MeasurementId}
-                          onChange={setGa4MeasurementId}
-                          placeholder="G-XXXXXXXXXX"
-                          hint="GA4 Property → Admin → Data Streams → Web Stream → Measurement ID."
-                        />
-                        <Field
-                          label="Measurement Protocol API Secret"
-                          value={ga4ApiSecret}
-                          onChange={setGa4ApiSecret}
-                          placeholder="xxxxxxxxxxxxxxxxxxxx"
-                          masked
-                          onReveal={() => setGa4ApiSecret("")}
-                          hint="Data Streams → Measurement Protocol API secrets → Create secret for server-side order sync."
-                        />
+                      <div className="p-8 space-y-6">
+                        <div className="p-5 bg-[#f8f9ff] border border-[#e5eeff] rounded-xl flex items-start gap-4">
+                          <MdShield className="text-[#006c49] text-2xl mt-0.5 shrink-0" />
+                          <div className="space-y-1">
+                            <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                            <p className="text-xs font-[Manrope] text-[#7c839b] leading-relaxed">
+                              Google Analytics 4 Measurement ID and API Secret are managed via server-side environment variables.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="px-8 py-4 border-t border-[#e5eeff] bg-[#f8f9ff]">
+                          <a href="https://analytics.google.com/analytics/web/" target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[11px] font-[Manrope] font-bold text-[#E37400] hover:underline">
+                            <MdOpenInNew className="text-sm" />
+                            Open Google Analytics Admin Dashboard
+                          </a>
+                        </div>
                       </div>
-                      <div className="px-8 py-4 border-t border-[#e5eeff] bg-[#f8f9ff]">
-                        <a href="https://analytics.google.com/analytics/web/" target="_blank" rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 text-[11px] font-[Manrope] font-bold text-[#E37400] hover:underline">
-                          <MdOpenInNew className="text-sm" />
-                          Open Google Analytics Admin Dashboard
-                        </a>
-                      </div>
-                    </div>
-                    <div className="flex justify-end">
-                      <button onClick={saveGa4} disabled={saveMutation.isPending}
-                        className="px-8 py-2.5 bg-black text-white font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-[#006c49] transition-all rounded-lg shadow disabled:opacity-60 flex items-center gap-2">
-                        {saveMutation.isPending
-                          ? <><MdAutorenew className="text-sm animate-spin" /> Saving…</>
-                          : savedSection === "ga4"
-                            ? <><MdCheck className="text-sm" /> Saved!</>
-                            : "Save GA4 Settings"
-                        }
-                      </button>
                     </div>
                   </div>
                 )}
@@ -1796,61 +1668,24 @@ export default function AdminSettingsPage() {
                           {dhlConfigured ? "Connected" : "Inactive"}
                         </span>
                       </div>
-                      <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        <Field
-                          label="DHL Site ID / API Key"
-                          value={dhlSiteId}
-                          onChange={setDhlSiteId}
-                          placeholder="v62_xxxxxx"
-                          hint="DHL Developer Portal → My Apps → API Client Credentials."
-                        />
-                        <Field
-                          label="DHL Password / Secret"
-                          value={dhlPassword}
-                          onChange={setDhlPassword}
-                          placeholder="xxxxxxxxxxxxxxxx"
-                          masked
-                          onReveal={() => setDhlPassword("")}
-                          hint="Kept server-side only for automated XML/REST dispatch."
-                        />
-                        <Field
-                          label="DHL Account Number"
-                          value={dhlAccountNumber}
-                          onChange={setDhlAccountNumber}
-                          placeholder="e.g. 123456789"
-                          hint="Your corporate DHL Express billing account number."
-                        />
-                        <div className="flex items-center justify-between p-4 bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg">
-                          <div>
-                            <p className="text-xs font-[Manrope] font-bold text-black">Test / Sandbox Environment</p>
-                            <p className="text-[11px] font-[Manrope] text-[#7c839b]">Simulate air waybills without dispatching physical couriers</p>
+                      <div className="p-8 space-y-6">
+                        <div className="p-5 bg-[#f8f9ff] border border-[#e5eeff] rounded-xl flex items-start gap-4">
+                          <MdShield className="text-[#006c49] text-2xl mt-0.5 shrink-0" />
+                          <div className="space-y-1">
+                            <p className="text-sm font-[Manrope] font-bold text-black">Managed via Platform Environment Variables</p>
+                            <p className="text-xs font-[Manrope] text-[#7c839b] leading-relaxed">
+                              DHL Express logistics credentials (Site ID, Password, and Account Number) are managed via server-side environment variables.
+                            </p>
                           </div>
-                          <input
-                            type="checkbox"
-                            checked={dhlTestMode}
-                            onChange={(e) => setDhlTestMode(e.target.checked)}
-                            className="w-4 h-4 accent-black rounded cursor-pointer"
-                          />
+                        </div>
+                        <div className="px-8 py-4 border-t border-[#e5eeff] bg-[#f8f9ff]">
+                          <a href="https://developer.dhl.com/" target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[11px] font-[Manrope] font-bold text-[#D40511] hover:underline">
+                            <MdOpenInNew className="text-sm" />
+                            Open DHL Developer Portal
+                          </a>
                         </div>
                       </div>
-                      <div className="px-8 py-4 border-t border-[#e5eeff] bg-[#f8f9ff]">
-                        <a href="https://developer.dhl.com/" target="_blank" rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 text-[11px] font-[Manrope] font-bold text-[#D40511] hover:underline">
-                          <MdOpenInNew className="text-sm" />
-                          Open DHL Developer Portal
-                        </a>
-                      </div>
-                    </div>
-                    <div className="flex justify-end">
-                      <button onClick={saveDhl} disabled={saveMutation.isPending}
-                        className="px-8 py-2.5 bg-black text-white font-[Manrope] font-bold text-xs tracking-widest uppercase hover:bg-[#006c49] transition-all rounded-lg shadow disabled:opacity-60 flex items-center gap-2">
-                        {saveMutation.isPending
-                          ? <><MdAutorenew className="text-sm animate-spin" /> Saving…</>
-                          : savedSection === "dhl"
-                            ? <><MdCheck className="text-sm" /> Saved!</>
-                            : "Save DHL Logistics Settings"
-                        }
-                      </button>
                     </div>
                   </div>
                 )}

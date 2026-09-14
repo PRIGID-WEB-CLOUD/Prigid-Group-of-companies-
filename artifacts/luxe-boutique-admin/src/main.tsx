@@ -34,7 +34,7 @@ import "./index.css";
 
 // Global fetch interceptor to automatically attach admin bearer token and credentials
 const originalFetch = window.fetch;
-window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   if (url.startsWith("/api") || url.includes("/api/")) {
     let token = null;
@@ -59,5 +59,28 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   return originalFetch(input, init);
 };
+
+try {
+  Object.defineProperty(window, "fetch", {
+    value: customFetch,
+    writable: true,
+    configurable: true
+  });
+} catch (err) {
+  try {
+    (window as any).fetch = customFetch;
+  } catch (err2) {
+    console.warn("[AI Studio] window.fetch cannot be overridden directly. Using fallback proxy on window prototype if possible.", err2);
+    try {
+      Object.defineProperty(Object.getPrototypeOf(window), "fetch", {
+        value: customFetch,
+        writable: true,
+        configurable: true
+      });
+    } catch (err3) {
+      console.error("[AI Studio] Absolutely unable to patch fetch on window or window.prototype:", err3);
+    }
+  }
+}
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -156,17 +156,9 @@ export default function PaymentSettingsManager() {
   const queryClient = useQueryClient();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
-  const [manualModalProvider, setManualModalProvider] = useState<ProviderItem | null>(null);
   const [refundTx, setRefundTx] = useState<Transaction | null>(null);
   const [refundReason, setRefundReason] = useState("");
   const [bannerNotice, setBannerNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  // Manual connect form state
-  const [manualAccountName, setManualAccountName] = useState("");
-  const [manualSecretKey, setManualSecretKey] = useState("");
-  const [manualPublicKey, setManualPublicKey] = useState("");
-  const [manualWebhookSecret, setManualWebhookSecret] = useState("");
-  const [manualLivemode, setManualLivemode] = useState(false);
 
   // Check URL params for OAuth status returns
   useEffect(() => {
@@ -300,51 +292,6 @@ export default function PaymentSettingsManager() {
     },
   });
 
-  const manualConnectMutation = useMutation({
-    mutationFn: async ({
-      provider,
-      accountName,
-      accessToken,
-      publishableKey,
-      webhookSecret,
-      livemode,
-    }: {
-      provider: string;
-      accountName?: string;
-      accessToken: string;
-      publishableKey?: string;
-      webhookSecret?: string;
-      livemode: boolean;
-    }) => {
-      const res = await fetch(`/api/payments/providers/${provider}/manual-connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountName,
-          accessToken,
-          publishableKey,
-          webhookSecret,
-          livemode,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to save credentials");
-      }
-      return res.json();
-    },
-    onSuccess: (_, vars) => {
-      queryClient.invalidateQueries({ queryKey: ["payment-providers"] });
-      queryClient.invalidateQueries({ queryKey: ["payment-audit-logs"] });
-      setManualModalProvider(null);
-      resetManualForm();
-      setBannerNotice({ type: "success", text: `Successfully connected ${vars.provider.toUpperCase()} with encrypted credentials.` });
-    },
-    onError: (err: any) => {
-      setBannerNotice({ type: "error", text: err.message });
-    },
-  });
-
   const refundMutation = useMutation({
     mutationFn: async ({ reference, reason }: { reference: string; reason: string }) => {
       const res = await fetch("/api/payments/refund", {
@@ -370,25 +317,7 @@ export default function PaymentSettingsManager() {
     },
   });
 
-  const resetManualForm = () => {
-    setManualAccountName("");
-    setManualSecretKey("");
-    setManualPublicKey("");
-    setManualWebhookSecret("");
-    setManualLivemode(false);
-  };
-
   const handleOAuthConnect = async (provider: ProviderItem) => {
-    if (!provider.capabilities?.supportsOAuth) {
-      setManualModalProvider(provider);
-      resetManualForm();
-      setBannerNotice({
-        type: "error",
-        text: `${provider.provider.toUpperCase()} uses Direct Secret Key and Public Key authentication. Please enter your API keys below.`,
-      });
-      return;
-    }
-
     // Open popup immediately in response to user action to prevent browser popup blockers
     const authWindow = window.open("", "oauth_popup", "width=600,height=700");
     if (!authWindow) {
@@ -402,9 +331,9 @@ export default function PaymentSettingsManager() {
     setConnectingProvider(provider.provider);
     try {
       const currentPath = window.location.pathname || "/providers";
-      const returnUrl = currentPath.startsWith("/admin")
+      const returnUrl = currentPath.startsWith("/seller")
         ? currentPath + (window.location.search || "?tab=payments")
-        : `/admin${currentPath.startsWith("/") ? "" : "/"}${currentPath}${window.location.search || "?tab=payments"}`;
+        : `/seller${currentPath.startsWith("/") ? "" : "/"}${currentPath}${window.location.search || "?tab=payments"}`;
 
       const res = await fetch(`/api/payments/providers/${provider.provider}/connect`, {
         method: "POST",
@@ -425,11 +354,9 @@ export default function PaymentSettingsManager() {
       authWindow.close();
       setBannerNotice({
         type: "error",
-        text: err.message || `Failed to initiate ${provider.provider} connection. Please enter your API keys directly below.`,
+        text: err.message || `Failed to initiate ${provider.provider} connection. Please check platform environment variables.`,
       });
       setConnectingProvider(null);
-      setManualModalProvider(provider);
-      resetManualForm();
     }
   };
 
@@ -609,22 +536,6 @@ export default function PaymentSettingsManager() {
             >
               <MdOpenInNew className="text-xs" /> Add Stripe Account (OAuth)
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                const stripeProv = providers.find(p => p.provider === "stripe");
-                if (stripeProv) {
-                  setManualModalProvider(stripeProv);
-                } else {
-                  setManualModalProvider({ provider: "stripe", name: "Stripe" } as any);
-                }
-                setManualAccountName("");
-                setManualLivemode(false);
-              }}
-              className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 transition-colors rounded-lg text-xs font-[Manrope] font-bold flex items-center gap-1.5 shadow-sm"
-            >
-              <MdSettings className="text-xs" /> Add Stripe Account (Manual)
-            </button>
           </div>
         </div>
 
@@ -763,29 +674,17 @@ export default function PaymentSettingsManager() {
                             </>
                           )}
                         </button>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => {
-                              setManualModalProvider(p);
-                              setManualAccountName(p.accountName || "");
-                              setManualLivemode(p.livemode);
-                            }}
-                            className="py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-[Manrope] font-bold hover:bg-slate-50 flex items-center justify-center gap-1"
-                          >
-                            <MdSettings className="text-sm" /> Advanced Config
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to disconnect ${p.provider.toUpperCase()} (${p.accountName || p.accountId || 'Account'})? Customer checkouts will no longer route through this account.`)) {
-                                disconnectMutation.mutate({ provider: p.provider, connectionId: p.id });
-                              }
-                            }}
-                            disabled={disconnectMutation.isPending}
-                            className="py-2 border border-red-200 text-red-600 rounded-lg text-xs font-[Manrope] font-bold hover:bg-red-50 flex items-center justify-center gap-1"
-                          >
-                            <MdDeleteForever className="text-sm" /> Disconnect
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Are you sure you want to disconnect ${p.provider.toUpperCase()} (${p.accountName || p.accountId || 'Account'})? Customer checkouts will no longer route through this account.`)) {
+                              disconnectMutation.mutate({ provider: p.provider, connectionId: p.id });
+                            }
+                          }}
+                          disabled={disconnectMutation.isPending}
+                          className="w-full py-2 border border-red-200 text-red-600 rounded-lg text-xs font-[Manrope] font-bold hover:bg-red-50 flex items-center justify-center gap-1"
+                        >
+                          <MdDeleteForever className="text-sm" /> Disconnect
+                        </button>
                       </div>
                     </div>
                   ) : (
@@ -814,34 +713,16 @@ export default function PaymentSettingsManager() {
                             )}
                           </button>
                           <p className="text-[10px] text-center text-slate-400 font-[Manrope]">
-                            1-Click OAuth2 App Install • No manual credentials needed
+                            1-Click OAuth2 App Install • Managed via Platform Env Vars
                           </p>
-                          <button
-                            onClick={() => {
-                              setManualModalProvider(p);
-                              resetManualForm();
-                            }}
-                            className="w-full py-2 border border-slate-200 text-slate-500 rounded-lg text-[11px] font-[Manrope] font-semibold hover:bg-slate-50 hover:text-slate-800 flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            <MdLock className="text-xs" /> Enter API Keys Manually
-                          </button>
                         </>
                       ) : (
-                        <button
-                          onClick={() => {
-                            setManualModalProvider(p);
-                            resetManualForm();
-                          }}
-                          className={`w-full py-3 px-4 rounded-xl text-xs font-[Manrope] font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-2 shadow-sm ${
-                            p.provider === "stripe"
-                              ? "bg-[#635BFF] hover:bg-[#5249e0] text-white"
-                              : p.provider === "paystack"
-                              ? "bg-[#001D2D] hover:bg-[#00283e] text-[#00C3F7] border border-[#00C3F7]/30"
-                              : "bg-[#FB9129] hover:bg-[#e4801e] text-white"
-                          }`}
-                        >
-                          <MdSettings className="text-base" /> Configure {p.provider} API Keys
-                        </button>
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                          <p className="text-xs font-[Manrope] text-slate-600 text-center">
+                            Credentials for {p.provider} are managed via platform-level environment variables. 
+                            Manual configuration is disabled in this environment.
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}
@@ -875,207 +756,6 @@ export default function PaymentSettingsManager() {
           })}
         </div>
       </div>
-
-      {/* ── Direct API Key Connect / Configuration Modal ── */}
-      {manualModalProvider && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 md:p-8 shadow-2xl border border-slate-200 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                {getProviderIcon(manualModalProvider.provider)}
-                <div>
-                  <h3 className="font-serif text-xl font-bold text-slate-900 capitalize">
-                    Connect {manualModalProvider.provider}
-                  </h3>
-                  <p className="text-xs font-[Manrope] text-slate-500">
-                    Encrypted Direct API Key Authorization
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setManualModalProvider(null)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
-              >
-                <MdClose className="text-xl" />
-              </button>
-            </div>
-
-            {/* Recommended OAuth2 Section */}
-            {manualModalProvider.capabilities?.supportsOAuth ? (
-              <>
-                <div className="p-4 bg-indigo-50/80 rounded-xl border border-indigo-100 space-y-2 mb-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-[Manrope] font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <MdCheckCircle className="text-indigo-600 text-sm" /> Recommended: 1-Click OAuth2 Connect
-                    </span>
-                    <span className="text-[10px] bg-indigo-200/60 text-indigo-800 font-bold px-2 py-0.5 rounded-full font-[Manrope]">Instant</span>
-                  </div>
-                  <p className="text-[11px] font-[Manrope] text-indigo-950 leading-relaxed">
-                    Skip entering API keys manually. Authorize your store directly with {manualModalProvider.provider.toUpperCase()} via OAuth2.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const p = manualModalProvider;
-                      setManualModalProvider(null);
-                      handleOAuthConnect(p);
-                    }}
-                    disabled={connectingProvider === manualModalProvider.provider}
-                    className={`w-full py-2.5 px-3 rounded-lg text-xs font-[Manrope] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 text-white shadow-sm ${
-                      manualModalProvider.provider === "stripe"
-                        ? "bg-[#635BFF] hover:bg-[#5249e0]"
-                        : manualModalProvider.provider === "paystack"
-                        ? "bg-[#0BA4DB] hover:bg-[#0992c4]"
-                        : manualModalProvider.provider === "flutterwave"
-                        ? "bg-[#FB9129] hover:bg-[#e4801e]"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    <MdOpenInNew className="text-sm" /> Connect or Re-authorize via OAuth2
-                  </button>
-                </div>
-
-                <div className="relative flex py-2 items-center">
-                  <div className="flex-grow border-t border-slate-200"></div>
-                  <span className="flex-shrink mx-3 text-[10px] font-[Manrope] font-bold uppercase tracking-widest text-slate-400">Or Manual Key Entry</span>
-                  <div className="flex-grow border-t border-slate-200"></div>
-                </div>
-              </>
-            ) : (
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 mb-4">
-                <span className="text-xs font-[Manrope] font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <MdLock className="text-slate-600 text-sm" /> Encrypted Direct API Credentials
-                </span>
-                <p className="text-[11px] font-[Manrope] text-slate-600 leading-relaxed">
-                  Enter your {manualModalProvider.provider.toUpperCase()} Secret Key (`sk_test_...` or `sk_live_...`) and Publishable Key (`pk_test_...` or `pk_live_...`) below. Credentials are encrypted with AES-256-GCM.
-                </p>
-                {manualModalProvider.provider === "stripe" && (
-                  <div className="p-2.5 bg-amber-50/80 border border-amber-200/80 rounded-lg text-[10px] font-[Manrope] text-amber-900 leading-normal">
-                    <strong className="font-bold">Note for Stripe Connect OAuth:</strong> 1-Click OAuth onboarding requires a Stripe Connect Client ID starting with <code className="bg-amber-100 px-1 py-0.5 rounded text-amber-950 font-mono font-bold">ca_</code> (set as <code className="font-mono">STRIPE_CLIENT_ID</code> in env). Standard secret/publishable keys are accepted directly in this form.
-                  </div>
-                )}
-              </div>
-            )}
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                manualConnectMutation.mutate({
-                  provider: manualModalProvider.provider,
-                  accountName: manualAccountName,
-                  accessToken: manualSecretKey,
-                  publishableKey: manualPublicKey,
-                  webhookSecret: manualWebhookSecret,
-                  livemode: manualLivemode,
-                });
-              }}
-              className="space-y-4"
-            >
-              <div className="space-y-1">
-                <label className="text-xs font-[Manrope] font-bold text-slate-700">Account / Store Display Name</label>
-                <input
-                  type="text"
-                  value={manualAccountName}
-                  onChange={(e) => setManualAccountName(e.target.value)}
-                  placeholder="e.g. Luxe Boutique Main"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-[Manrope] outline-none focus:border-slate-900"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-[Manrope] font-bold text-slate-700 flex items-center gap-1">
-                  Secret Key / Access Token <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={manualSecretKey}
-                  onChange={(e) => setManualSecretKey(e.target.value)}
-                  placeholder={
-                    manualModalProvider.provider === "stripe"
-                      ? "sk_live_... or sk_test_..."
-                      : manualModalProvider.provider === "paystack"
-                      ? "sk_live_... or sk_test_..."
-                      : "FLWSECK_TEST-... or FLWSECK-..."
-                  }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-mono outline-none focus:border-slate-900"
-                />
-                <p className="text-[10px] text-slate-400 font-[Manrope]">
-                  Encrypted immediately at rest in the database using AES-256-GCM.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-[Manrope] font-bold text-slate-700">
-                  Public / Publishable Key (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={manualPublicKey}
-                  onChange={(e) => setManualPublicKey(e.target.value)}
-                  placeholder={
-                    manualModalProvider.provider === "stripe"
-                      ? "pk_live_... or pk_test_..."
-                      : manualModalProvider.provider === "paystack"
-                      ? "pk_live_... or pk_test_..."
-                      : "FLWPUBK_TEST-... or FLWPUBK-..."
-                  }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-mono outline-none focus:border-slate-900"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-[Manrope] font-bold text-slate-700">
-                  Webhook Secret / Signing Secret (Optional)
-                </label>
-                <input
-                  type="password"
-                  value={manualWebhookSecret}
-                  onChange={(e) => setManualWebhookSecret(e.target.value)}
-                  placeholder="whsec_... or Secret Hash"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-mono outline-none focus:border-slate-900"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <input
-                  type="checkbox"
-                  id="livemodeToggle"
-                  checked={manualLivemode}
-                  onChange={(e) => setManualLivemode(e.target.checked)}
-                  className="w-4 h-4 rounded text-[#006c49] focus:ring-[#006c49]"
-                />
-                <label htmlFor="livemodeToggle" className="text-xs font-[Manrope] font-semibold text-slate-700 cursor-pointer">
-                  This is a Live Production Account (Processes real charges)
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setManualModalProvider(null)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-xs font-[Manrope] font-bold text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={manualConnectMutation.isPending || !manualSecretKey.trim()}
-                  className="px-6 py-2 bg-slate-900 text-white rounded-lg text-xs font-[Manrope] font-bold tracking-wide uppercase hover:bg-[#006c49] disabled:opacity-50 transition-all flex items-center gap-2"
-                >
-                  {manualConnectMutation.isPending ? (
-                    <>
-                      <MdAutorenew className="animate-spin text-sm" /> Saving…
-                    </>
-                  ) : (
-                    "Save & Connect"
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ── Refund Modal ── */}
       {refundTx && (

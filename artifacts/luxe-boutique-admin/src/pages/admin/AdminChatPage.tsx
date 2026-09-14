@@ -339,7 +339,7 @@ export default function AdminChatPage() {
               To access your Facebook Messenger, Instagram Direct, and WhatsApp Business communications, please connect your Meta Business Suite account first.
             </p>
             <Link 
-              href="/admin/channels/meta-business"
+              href="/seller/channels/meta-business"
               className="px-6 py-3 bg-[#006c49] text-white rounded-xl font-bold font-[Manrope] text-sm hover:bg-[#005a3c] transition-all shadow-sm"
             >
               Connect Meta Business Suite
@@ -583,7 +583,7 @@ export default function AdminChatPage() {
                             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-xs font-[Manrope] text-amber-900 shadow-xs relative">
                               <div className="flex items-center gap-2 mb-1.5">
                                 <MdModeEdit className="text-amber-500" />
-                                <span className="font-bold uppercase tracking-widest text-[9px]">Internal Admin Note</span>
+                                <span className="font-bold uppercase tracking-widest text-[9px]">Internal Seller Note</span>
                                 <span className="text-amber-400 ml-auto">{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                               </div>
                               {msg.text}
@@ -591,7 +591,7 @@ export default function AdminChatPage() {
                           ) : (
                             <>
                               <div className={`text-[10px] font-bold text-slate-400 mb-1 px-1 flex items-center gap-2 ${isSelf ? "justify-end" : "justify-start"}`}>
-                                {isSelf ? "Luxe Boutique Admin" : msg.customerName}
+                                {isSelf ? "Luxe Boutique Seller" : msg.customerName}
                                 <span>•</span>
                                 <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                               </div>

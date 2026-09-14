@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIGID Commerce — Curated Luxury Marketplace & Independent Atelier Directory</title>
+  <meta name="description" content="Explore independent luxury ateliers, fine jewellery, bespoke horology, and Italian leathercraft across verified PRIGID Commerce boutiques.">
+  <meta property="og:title" content="PRIGID Commerce — Curated Luxury Marketplace & Independent Atelier Directory">
+  <meta property="og:description" content="Explore independent luxury ateliers, fine jewellery, bespoke horology, and Italian leathercraft across verified PRIGID Commerce boutiques.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Manrope:wght@200..800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['Playfair Display', 'serif'],
+            sans: ['Manrope', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #FAF9F6;
+    }
+    .fade-in {
+      animation: fadeIn 0.8s ease-out forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body class="text-slate-900 font-sans min-h-screen selection:bg-slate-950 selection:text-white">
+
+  <!-- SaaS & Marketplace Navigation Bar -->
+  <nav class="border-b border-slate-200/60 bg-white/85 backdrop-blur-md sticky top-0 z-50 px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2.5 group" aria-label="PC - PRIGID Commerce">
+      <!-- Monogram PC Logo: P inside C -->
+      <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-950 flex items-center justify-center text-white shadow-sm ring-1 ring-slate-900/10 group-hover:bg-slate-900 transition-all shrink-0">
+        <svg class="w-6 h-6 sm:w-7 sm:h-7" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Outer C: luxury curved silhouette -->
+          <path d="M35 14C31 10 25.5 8 19.5 8C11 8 4 15 4 24C4 33 11 40 19.5 40C25.5 40 31 38 35 34" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" />
+          <!-- Inner P: nestled directly inside C -->
+          <path d="M16 15V33M16 15H23.5C27.5 15 30.5 17.8 30.5 21.5C30.5 25.2 27.5 28 23.5 28H16" stroke="#34d399" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="flex flex-col">
+        <span class="text-sm sm:text-base font-serif font-bold tracking-[0.2em] text-slate-900 leading-tight">
+          PC
+        </span>
+        <span class="text-[9px] uppercase tracking-[0.25em] text-slate-400 font-sans hidden sm:block">Marketplace Collective</span>
+      </div>
+    </a>
+    
+    <div class="flex items-center gap-3.5 sm:gap-6 text-xs font-semibold uppercase tracking-wider">
+      <a href="#boutiques" class="text-slate-700 hover:text-slate-900 transition-colors">Directory</a>
+      <a href="#merchant-platform" class="text-slate-500 hover:text-slate-900 transition-colors hidden md:inline-block">For Merchants</a>
+      <a href="#pricing" class="text-slate-500 hover:text-slate-900 transition-colors hidden sm:inline-block">Pricing</a>
+      <a href="/seller" class="px-3.5 sm:px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors shrink-0 text-center shadow-sm">
+        <span class="sm:hidden">Merchant</span>
+        <span class="hidden sm:inline">Merchant Console</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Marketplace Hero Section -->
+  <header class="pt-14 sm:pt-20 pb-12 sm:pb-16 px-4 sm:px-6 max-w-6xl mx-auto text-center fade-in">
+    <div class="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-bold text-[#006c49] mb-4 bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-100/80 shadow-xs">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+      The Unified Luxury Collective
+    </div>
+    
+    <h1 class="text-3xl sm:text-5xl md:text-6xl font-serif font-light tracking-tight text-slate-950 mb-5 leading-[1.15]">
+      Discover Independent Luxury Maisons <br class="hidden sm:inline" />
+      <span class="font-normal italic text-slate-800">& Artisanal Showrooms.</span>
+    </h1>
+    
+    <p class="text-slate-600 font-light text-sm sm:text-base md:text-lg max-w-2xl mx-auto mb-8 leading-relaxed">
+      A curated global marketplace connecting discerning collectors directly with independent ateliers, bespoke horologists, and heritage houses. Every boutique operates an autonomous digital salon.
+    </p>
+
+    <!-- Quick CTA & Search Anchor -->
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-3.5 max-w-md mx-auto mb-12">
+      <a href="#boutiques" class="w-full sm:w-auto px-7 py-3 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs tracking-wider uppercase rounded-lg transition-all shadow-sm text-center">
+        Explore Directory
+      </a>
+      <a href="/seller/register" class="w-full sm:w-auto px-7 py-3 bg-white border border-slate-200/90 hover:bg-slate-50 text-slate-800 font-medium text-xs tracking-wider uppercase rounded-lg transition-all text-center shadow-xs">
+        Open a Boutique
+      </a>
+    </div>
+
+    <!-- Live Market Stats Strip -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 max-w-4xl mx-auto pt-4 border-t border-slate-200/60 text-left">
+      <div class="p-3.5 bg-white/70 backdrop-blur-xs rounded-xl border border-slate-200/60">
+        <span class="block text-2xl font-serif font-semibold text-slate-900" id="stat-maisons">5</span>
+        <span class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Curated Ateliers</span>
+      </div>
+      <div class="p-3.5 bg-white/70 backdrop-blur-xs rounded-xl border border-slate-200/60">
+        <span class="block text-2xl font-serif font-semibold text-slate-900">100%</span>
+        <span class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Verified Provenance</span>
+      </div>
+      <div class="p-3.5 bg-white/70 backdrop-blur-xs rounded-xl border border-slate-200/60">
+        <span class="block text-2xl font-serif font-semibold text-slate-900">74</span>
+        <span class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Global Destinations</span>
+      </div>
+      <div class="p-3.5 bg-white/70 backdrop-blur-xs rounded-xl border border-slate-200/60">
+        <span class="block text-2xl font-serif font-semibold text-emerald-700">99.4%</span>
+        <span class="text-[11px] font-medium uppercase tracking-wider text-slate-400">Client Satisfaction</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Marketplace Directory Section (Primary Core Feature) -->
+  <section id="boutiques" class="py-12 sm:py-16 px-4 sm:px-6 max-w-6xl mx-auto">
+    
+    <!-- Directory Controls: Title, Search, Category Tabs -->
+    <div class="mb-10">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        <div>
+          <span class="text-[10px] uppercase tracking-[0.25em] font-bold text-slate-400 block mb-1">
+            Artisanal Directory
+          </span>
+          <h2 class="text-2xl sm:text-3xl font-serif font-light text-slate-950">
+            Featured Boutiques & Ateliers
+          </h2>
+        </div>
+        
+        <!-- Live Search Field -->
+        <div class="w-full md:w-80 relative">
+          <input 
+            type="text" 
+            id="store-search-input"
+            oninput="handleStoreSearch(event)"
+            placeholder="Search boutique, craft, or city..."
+            class="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-all font-sans"
+          />
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+          <button 
+            id="store-search-clear"
+            onclick="clearStoreSearch()"
+            class="hidden absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
+            aria-label="Clear search"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none text-xs font-medium">
+        <button onclick="filterCategory('all')" class="cat-pill active px-3.5 py-1.5 rounded-full whitespace-nowrap bg-slate-900 text-white transition-all">
+          All Maisons
+        </button>
+        <button onclick="filterCategory('couture')" class="cat-pill px-3.5 py-1.5 rounded-full whitespace-nowrap bg-white border border-slate-200 text-slate-600 hover:border-slate-400 transition-all">
+          Haute Couture & RTW
+        </button>
+        <button onclick="filterCategory('leather')" class="cat-pill px-3.5 py-1.5 rounded-full whitespace-nowrap bg-white border border-slate-200 text-slate-600 hover:border-slate-400 transition-all">
+          Leather & Footwear
+        </button>
+        <button onclick="filterCategory('jewels')" class="cat-pill px-3.5 py-1.5 rounded-full whitespace-nowrap bg-white border border-slate-200 text-slate-600 hover:border-slate-400 transition-all">
+          Fine Jewellery & Gems
+        </button>
+        <button onclick="filterCategory('horology')" class="cat-pill px-3.5 py-1.5 rounded-full whitespace-nowrap bg-white border border-slate-200 text-slate-600 hover:border-slate-400 transition-all">
+          Horology & Timepieces
+        </button>
+        <button onclick="filterCategory('silk')" class="cat-pill px-3.5 py-1.5 rounded-full whitespace-nowrap bg-white border border-slate-200 text-slate-600 hover:border-slate-400 transition-all">
+          Silk & Eveningwear
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Stores Count Status -->
+    <div class="flex items-center justify-between text-xs text-slate-400 mb-6">
+      <span id="directory-count">Showing 5 verified boutiques</span>
+      <span class="inline-flex items-center gap-1.5 text-emerald-700 font-medium">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+        Direct Atelier Checkout Enabled
+      </span>
+    </div>
+
+    <!-- Stores Grid -->
+    <div id="stores-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+      
+      <!-- Card 1: Luxe Boutique Ateliers (Fallback & Hydrated) -->
+      <article class="store-card group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between" data-category="couture" data-name="Luxe Boutique Ateliers" data-city="New York" data-craft="Cashmere Tailoring Couture">
+        <div>
+          <!-- Image Container with Zoom effect -->
+          <div class="relative aspect-[16/10] overflow-hidden bg-slate-100">
+            <img 
+              src="https://images.unsplash.com/photo-1539533018447-63fcce2678e3?q=80&w=987&auto=format&fit=crop" 
+              alt="Luxe Boutique Ateliers" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              loading="lazy"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"></div>
+            
+            <!-- Top Badges -->
+            <div class="absolute top-3 left-3 flex gap-2">
+              <span class="text-[9px] font-bold uppercase tracking-wider bg-slate-900/90 text-white px-2.5 py-1 rounded-full backdrop-blur-xs">
+                Flagship Maison
+              </span>
+            </div>
+            <div class="absolute top-3 right-3">
+              <span class="text-[10px] font-semibold bg-white/90 text-slate-800 px-2 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-1">
+                ★ 4.99
+              </span>
+            </div>
+
+            <!-- Bottom Image Overlay: City & Founded -->
+            <div class="absolute bottom-3 left-3 right-3 text-white">
+              <p class="text-[10px] font-medium tracking-wide uppercase text-slate-200">
+                New York • 5th Avenue Flagship
+              </p>
+            </div>
+          </div>
+
+          <!-- Card Content -->
+          <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <h3 class="text-lg font-serif font-bold text-slate-950 group-hover:text-slate-700 transition-colors">
+                Luxe Boutique Ateliers
+              </h3>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 shrink-0">
+                USD ($)
+              </span>
+            </div>
+            
+            <p class="text-xs text-slate-500 font-light leading-relaxed mb-4">
+              Haute Couture & Handcrafted Grade-A Mongolian Cashmere
+            </p>
+
+            <!-- Highlights tags -->
+            <div class="flex flex-wrap gap-1.5 mb-5">
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Grade-A Cashmere
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Bespoke Tailoring
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                White-Glove Valet
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Footer Action -->
+        <div class="px-5 sm:px-6 pb-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-auto">
+          <span class="text-[10px] font-mono text-slate-400 truncate max-w-[130px]">
+            maison.luxeboutique.com
+          </span>
+          <a 
+            href="/boutique/luxe-boutique" 
+            class="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-all shadow-xs"
+          >
+            Enter Boutique
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </a>
+        </div>
+      </article>
+
+      <!-- Card 2: Maison Moretti Milano -->
+      <article class="store-card group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between" data-category="leather" data-name="Maison Moretti Milano" data-city="Milano Italy" data-craft="Leather Shoes Footwear Alligator">
+        <div>
+          <div class="relative aspect-[16/10] overflow-hidden bg-slate-100">
+            <img 
+              src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=2070&auto=format&fit=crop" 
+              alt="Maison Moretti Milano" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              loading="lazy"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"></div>
+            
+            <div class="absolute top-3 left-3 flex gap-2">
+              <span class="text-[9px] font-bold uppercase tracking-wider bg-slate-900/90 text-white px-2.5 py-1 rounded-full backdrop-blur-xs">
+                Heritage Leather
+              </span>
+            </div>
+            <div class="absolute top-3 right-3">
+              <span class="text-[10px] font-semibold bg-white/90 text-slate-800 px-2 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-1">
+                ★ 4.97
+              </span>
+            </div>
+
+            <div class="absolute bottom-3 left-3 right-3 text-white">
+              <p class="text-[10px] font-medium tracking-wide uppercase text-slate-200">
+                Milano, Italy • Via Montenapoleone
+              </p>
+            </div>
+          </div>
+
+          <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <h3 class="text-lg font-serif font-bold text-slate-950 group-hover:text-slate-700 transition-colors">
+                Maison Moretti Milano
+              </h3>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 shrink-0">
+                EUR (€)
+              </span>
+            </div>
+            
+            <p class="text-xs text-slate-500 font-light leading-relaxed mb-4">
+              Artisanal Tuscan Leather Goods & Goodyear Welted Footwear
+            </p>
+
+            <div class="flex flex-wrap gap-1.5 mb-5">
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Full-Grain Alligator
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Hand-Lasted
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Tuscan Vachetta
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-5 sm:px-6 pb-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-auto">
+          <span class="text-[10px] font-mono text-slate-400 truncate max-w-[130px]">
+            moretti.it
+          </span>
+          <a 
+            href="/boutique/maison-moretti" 
+            class="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-all shadow-xs"
+          >
+            Enter Boutique
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </a>
+        </div>
+      </article>
+
+      <!-- Card 3: Aurelia Haute Joaillerie -->
+      <article class="store-card group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between" data-category="jewels" data-name="Aurelia Haute Joaillerie" data-city="Paris France" data-craft="Jewelry Diamonds Platinum Gems">
+        <div>
+          <div class="relative aspect-[16/10] overflow-hidden bg-slate-100">
+            <img 
+              src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?q=80&w=1200&auto=format&fit=crop" 
+              alt="Aurelia Haute Joaillerie" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              loading="lazy"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"></div>
+            
+            <div class="absolute top-3 left-3 flex gap-2">
+              <span class="text-[9px] font-bold uppercase tracking-wider bg-slate-900/90 text-white px-2.5 py-1 rounded-full backdrop-blur-xs">
+                High Joaillerie
+              </span>
+            </div>
+            <div class="absolute top-3 right-3">
+              <span class="text-[10px] font-semibold bg-white/90 text-slate-800 px-2 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-1">
+                ★ 5.0
+              </span>
+            </div>
+
+            <div class="absolute bottom-3 left-3 right-3 text-white">
+              <p class="text-[10px] font-medium tracking-wide uppercase text-slate-200">
+                Paris, France • Place Vendôme
+              </p>
+            </div>
+          </div>
+
+          <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <h3 class="text-lg font-serif font-bold text-slate-950 group-hover:text-slate-700 transition-colors">
+                Aurelia Haute Joaillerie
+              </h3>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 shrink-0">
+                USD ($)
+              </span>
+            </div>
+            
+            <p class="text-xs text-slate-500 font-light leading-relaxed mb-4">
+              High Jewellery, Rare Coloured Gemstones & Bespoke Platinum
+            </p>
+
+            <div class="flex flex-wrap gap-1.5 mb-5">
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Ethical Diamonds
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Custom Settings
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                GIA Certified
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-5 sm:px-6 pb-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-auto">
+          <span class="text-[10px] font-mono text-slate-400 truncate max-w-[130px]">
+            aurelia-paris.com
+          </span>
+          <a 
+            href="/boutique/aurelia-jewels" 
+            class="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-all shadow-xs"
+          >
+            Enter Boutique
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </a>
+        </div>
+      </article>
+
+      <!-- Card 4: Kurogane Horology -->
+      <article class="store-card group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between" data-category="horology" data-name="Kurogane Horology" data-city="Kyoto Geneva" data-craft="Watches Horology Timepieces Titanium">
+        <div>
+          <div class="relative aspect-[16/10] overflow-hidden bg-slate-100">
+            <img 
+              src="https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=1200&auto=format&fit=crop" 
+              alt="Kurogane Horology" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              loading="lazy"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"></div>
+            
+            <div class="absolute top-3 left-3 flex gap-2">
+              <span class="text-[9px] font-bold uppercase tracking-wider bg-slate-900/90 text-white px-2.5 py-1 rounded-full backdrop-blur-xs">
+                Independent Horology
+              </span>
+            </div>
+            <div class="absolute top-3 right-3">
+              <span class="text-[10px] font-semibold bg-white/90 text-slate-800 px-2 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-1">
+                ★ 4.98
+              </span>
+            </div>
+
+            <div class="absolute bottom-3 left-3 right-3 text-white">
+              <p class="text-[10px] font-medium tracking-wide uppercase text-slate-200">
+                Kyoto & Geneva • Independent Master
+              </p>
+            </div>
+          </div>
+
+          <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <h3 class="text-lg font-serif font-bold text-slate-950 group-hover:text-slate-700 transition-colors">
+                Kurogane Horology
+              </h3>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 shrink-0">
+                USD ($)
+              </span>
+            </div>
+            
+            <p class="text-xs text-slate-500 font-light leading-relaxed mb-4">
+              Master Chronometry & Hand-Finished Titanium Horology
+            </p>
+
+            <div class="flex flex-wrap gap-1.5 mb-5">
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                In-House Calibre
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Urushi Lacquer
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                COSC Certified
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-5 sm:px-6 pb-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-auto">
+          <span class="text-[10px] font-mono text-slate-400 truncate max-w-[130px]">
+            kurogane-watches.ch
+          </span>
+          <a 
+            href="/boutique/kurogane" 
+            class="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-all shadow-xs"
+          >
+            Enter Boutique
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </a>
+        </div>
+      </article>
+
+      <!-- Card 5: Atelier Céleste -->
+      <article class="store-card group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between" data-category="silk" data-name="Atelier Céleste" data-city="London UK" data-craft="Silk Knits Eveningwear Cashmere">
+        <div>
+          <div class="relative aspect-[16/10] overflow-hidden bg-slate-100">
+            <img 
+              src="https://images.unsplash.com/photo-1485462537746-965f33f7f6a7?q=80&w=987&auto=format&fit=crop" 
+              alt="Atelier Céleste" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              loading="lazy"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"></div>
+            
+            <div class="absolute top-3 left-3 flex gap-2">
+              <span class="text-[9px] font-bold uppercase tracking-wider bg-slate-900/90 text-white px-2.5 py-1 rounded-full backdrop-blur-xs">
+                Couture Atelier
+              </span>
+            </div>
+            <div class="absolute top-3 right-3">
+              <span class="text-[10px] font-semibold bg-white/90 text-slate-800 px-2 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-1">
+                ★ 4.95
+              </span>
+            </div>
+
+            <div class="absolute bottom-3 left-3 right-3 text-white">
+              <p class="text-[10px] font-medium tracking-wide uppercase text-slate-200">
+                London, UK • Mayfair Atelier
+              </p>
+            </div>
+          </div>
+
+          <div class="p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <h3 class="text-lg font-serif font-bold text-slate-950 group-hover:text-slate-700 transition-colors">
+                Atelier Céleste
+              </h3>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 shrink-0">
+                GBP (£)
+              </span>
+            </div>
+            
+            <p class="text-xs text-slate-500 font-light leading-relaxed mb-4">
+              Mulberry Silk Charmeuse, Eveningwear & Delicate Knits
+            </p>
+
+            <div class="flex flex-wrap gap-1.5 mb-5">
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                100% Mulberry Silk
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Hand-Draped
+              </span>
+              <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                Limited Edition
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-5 sm:px-6 pb-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-auto">
+          <span class="text-[10px] font-mono text-slate-400 truncate max-w-[130px]">
+            atelierceleste.co.uk
+          </span>
+          <a 
+            href="/boutique/atelier-celeste" 
+            class="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-all shadow-xs"
+          >
+            Enter Boutique
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </a>
+        </div>
+      </article>
+
+    </div>
+
+    <!-- Empty State (Shown when search/filter yields 0 results) -->
+    <div id="no-stores-state" class="hidden text-center py-16 px-4 bg-white rounded-2xl border border-slate-200/80 mt-6">
+      <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3 text-lg">
+        🔍
+      </div>
+      <h3 class="text-base font-serif font-bold text-slate-900 mb-1">No Maisons Found</h3>
+      <p class="text-xs text-slate-500 max-w-sm mx-auto mb-4">
+        No luxury boutiques currently match your filter or query. Try clearing your search or switching categories.
+      </p>
+      <button onclick="clearStoreSearch()" class="px-4 py-2 bg-slate-900 text-white text-xs font-semibold uppercase tracking-wider rounded-lg hover:bg-slate-800 transition-colors">
+        View All Maisons
+      </button>
+    </div>
+  </section>
+
+  <!-- Marketplace Collective Principles -->
+  <section class="py-16 bg-white border-y border-slate-200/60 px-4 sm:px-6">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center mb-12">
+        <span class="text-[10px] uppercase tracking-[0.25em] font-bold text-slate-400 block mb-2">
+          Curated Standards
+        </span>
+        <h2 class="text-2xl sm:text-3xl font-serif font-light text-slate-950">
+          The Pillars of PRIGID Marketplace
+        </h2>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="p-5 bg-[#FAF9F6] rounded-xl border border-slate-100 flex flex-col items-start">
+          <div class="w-8 h-8 rounded-lg bg-white border border-slate-200/60 flex items-center justify-center text-slate-800 font-serif font-bold text-sm mb-4 shadow-xs">
+            01
+          </div>
+          <h3 class="text-sm font-serif font-bold text-slate-900 mb-1.5">Direct From Ateliers</h3>
+          <p class="text-slate-500 text-xs font-light leading-relaxed">
+            Purchase directly from the craftspeople and heritage houses. Zero intermediary markups or secondary brokers.
+          </p>
+        </div>
+
+        <div class="p-5 bg-[#FAF9F6] rounded-xl border border-slate-100 flex flex-col items-start">
+          <div class="w-8 h-8 rounded-lg bg-white border border-slate-200/60 flex items-center justify-center text-slate-800 font-serif font-bold text-sm mb-4 shadow-xs">
+            02
+          </div>
+          <h3 class="text-sm font-serif font-bold text-slate-900 mb-1.5">Insured Global Courier</h3>
+          <p class="text-slate-500 text-xs font-light leading-relaxed">
+            Every shipment is expedited through dedicated corporate DHL Express corridors with signature on delivery and transit tracking.
+          </p>
+        </div>
+
+        <div class="p-5 bg-[#FAF9F6] rounded-xl border border-slate-100 flex flex-col items-start">
+          <div class="w-8 h-8 rounded-lg bg-white border border-slate-200/60 flex items-center justify-center text-slate-800 font-serif font-bold text-sm mb-4 shadow-xs">
+            03
+          </div>
+          <h3 class="text-sm font-serif font-bold text-slate-900 mb-1.5">Verified Provenance</h3>
+          <p class="text-slate-500 text-xs font-light leading-relaxed">
+            Every maison is certified for artisanal pedigree, conflict-free materials, and genuine master-level craftsmanship.
+          </p>
+        </div>
+
+        <div class="p-5 bg-[#FAF9F6] rounded-xl border border-slate-100 flex flex-col items-start">
+          <div class="w-8 h-8 rounded-lg bg-white border border-slate-200/60 flex items-center justify-center text-slate-800 font-serif font-bold text-sm mb-4 shadow-xs">
+            04
+          </div>
+          <h3 class="text-sm font-serif font-bold text-slate-900 mb-1.5">Private Concierge Service</h3>
+          <p class="text-slate-500 text-xs font-light leading-relaxed">
+            Book private digital showings or request bespoke commissions directly through the atelier's private salon desk.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- For Merchants / SaaS Platform Section -->
+  <section id="merchant-platform" class="py-16 sm:py-20 px-4 sm:px-6 max-w-6xl mx-auto">
+    <div class="bg-slate-950 text-white rounded-3xl p-8 sm:p-12 md:p-16 relative overflow-hidden shadow-2xl">
+      <!-- Background subtle accent -->
+      <div class="absolute -right-20 -top-20 w-96 h-96 rounded-full bg-emerald-950/40 blur-3xl pointer-events-none"></div>
+
+      <div class="max-w-2xl relative z-10">
+        <span class="text-[10px] uppercase tracking-[0.3em] font-bold text-emerald-400 mb-3 inline-block">
+          For Designers & Heritage Houses
+        </span>
+        <h2 class="text-2xl sm:text-4xl font-serif font-light mb-4 leading-tight">
+          Join the PRIGID Collective. <br />
+          <span class="text-slate-300 font-normal italic">Launch Your Digital Maison in Minutes.</span>
+        </h2>
+        <p class="text-slate-400 font-light text-xs sm:text-sm leading-relaxed mb-8">
+          Maintain 100% brand autonomy with your own custom domain, private showroom preview mode, integrated Stripe/PayPal payments, and automated DHL Express waybill generation.
+        </p>
+
+        <div class="grid grid-cols-2 gap-4 text-xs mb-8 text-slate-300 font-light">
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400 font-bold">✓</span> No-code luxury showroom builder
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400 font-bold">✓</span> BYOC DHL Express API pipelines
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400 font-bold">✓</span> Custom domain & subdomain isolation
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400 font-bold">✓</span> Multi-currency global checkout
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <a href="/seller/register" class="px-6 py-3 bg-white text-slate-950 hover:bg-slate-100 font-semibold text-xs tracking-wider uppercase rounded-lg transition-all text-center">
+            Register As Merchant
+          </a>
+          <a href="#pricing" class="px-6 py-3 bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-850 font-semibold text-xs tracking-wider uppercase rounded-lg transition-all text-center">
+            View SaaS Plans ($15–$50)
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing Section -->
+  <section id="pricing" class="py-16 px-4 sm:px-6 max-w-6xl mx-auto">
+    <div class="text-center mb-12">
+      <span class="text-[10px] uppercase tracking-[0.25em] font-bold text-slate-400 block mb-2">
+        Merchant Membership
+      </span>
+      <h2 class="text-2xl md:text-3xl font-serif font-light tracking-wide mb-3">Curation Pricing Plans</h2>
+      <p class="text-slate-500 text-xs sm:text-sm font-light mb-6">Transparent monthly pricing. No hidden fees or restrictive commissions.</p>
+
+      <!-- Toggle Billing -->
+      <div class="inline-flex items-center gap-2 bg-white p-1 rounded-full border border-slate-200 shadow-xs mb-4">
+        <button id="btn-monthly" onclick="setBilling('monthly')" class="px-4 py-1.5 rounded-full text-xs font-semibold transition-all bg-slate-900 text-white">
+          Monthly Billing
+        </button>
+        <button id="btn-annual" onclick="setBilling('annual')" class="px-4 py-1.5 rounded-full text-xs font-semibold transition-all text-slate-500 flex items-center gap-1.5">
+          Annual Billing
+          <span class="bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">Save 20%</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Pricing Grid -->
+    <div class="grid md:grid-cols-3 gap-6 sm:gap-8 items-stretch max-w-5xl mx-auto">
+      <!-- Starter Plan -->
+      <div class="flex flex-col justify-between p-6 sm:p-8 bg-white border border-slate-200/80 rounded-2xl hover:shadow-md transition-all">
+        <div>
+          <h3 class="text-lg font-serif font-bold text-slate-900 mb-1">Atelier Starter</h3>
+          <p class="text-xs text-slate-400 font-light mb-6 min-h-[32px]">For independent designers & single showroom boutiques.</p>
+          <div class="flex items-baseline gap-1 mb-6">
+            <span class="text-4xl font-serif font-semibold tracking-tight text-slate-900">$<span id="price-starter">15</span></span>
+            <span class="text-xs text-slate-400 font-light">/mo</span>
+          </div>
+          <div class="w-full h-[1px] bg-slate-100 mb-6"></div>
+          <ul class="space-y-3 mb-8 text-xs text-slate-600 font-light">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> 1 Independent Storefront
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Up to 50 Luxury Products
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Marketplace Directory Listing
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Standard Stripe / PayPal Checkout
+            </li>
+          </ul>
+        </div>
+        <a href="/seller/register" class="w-full py-2.5 bg-slate-900 hover:bg-slate-850 text-white font-medium text-xs tracking-wider uppercase rounded-lg transition-all text-center">
+          Get Started
+        </a>
+      </div>
+
+      <!-- Growth Plan -->
+      <div class="flex flex-col justify-between p-6 sm:p-8 bg-white border-2 border-slate-900 rounded-2xl shadow-md relative">
+        <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-bold tracking-widest uppercase px-3 py-1 rounded-full">
+          Most Popular
+        </div>
+        <div>
+          <h3 class="text-lg font-serif font-bold text-slate-900 mb-1">Maison Growth</h3>
+          <p class="text-xs text-slate-400 font-light mb-6 min-h-[32px]">For established houses expanding digital flagship operations.</p>
+          <div class="flex items-baseline gap-1 mb-6">
+            <span class="text-4xl font-serif font-semibold tracking-tight text-slate-900">$<span id="price-growth">25</span></span>
+            <span class="text-xs text-slate-400 font-light">/mo</span>
+          </div>
+          <div class="w-full h-[1px] bg-slate-100 mb-6"></div>
+          <ul class="space-y-3 mb-8 text-xs text-slate-600 font-light">
+            <li class="flex items-start gap-2 font-medium text-slate-900">
+              <span class="text-emerald-700 font-bold">✓</span> Unlimited Luxury Products
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Custom Domain Connection (yourbrand.com)
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Direct DHL Express API Integration
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Priority Marketplace Placement
+            </li>
+          </ul>
+        </div>
+        <a href="/seller/register" class="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-medium text-xs tracking-wider uppercase rounded-lg transition-all text-center">
+          Launch Flagship
+        </a>
+      </div>
+
+      <!-- Enterprise Plan -->
+      <div class="flex flex-col justify-between p-6 sm:p-8 bg-white border border-slate-200/80 rounded-2xl hover:shadow-md transition-all">
+        <div>
+          <h3 class="text-lg font-serif font-bold text-slate-900 mb-1">Haute Couture</h3>
+          <p class="text-xs text-slate-400 font-light mb-6 min-h-[32px]">For heritage groups managing multiple global luxury maisons.</p>
+          <div class="flex items-baseline gap-1 mb-6">
+            <span class="text-4xl font-serif font-semibold tracking-tight text-slate-900">$<span id="price-enterprise">50</span></span>
+            <span class="text-xs text-slate-400 font-light">/mo</span>
+          </div>
+          <div class="w-full h-[1px] bg-slate-100 mb-6"></div>
+          <ul class="space-y-3 mb-8 text-xs text-slate-600 font-light">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Multi-Brand Showroom Support
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Dedicated Private Client Concierge
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> Multi-Currency & Cross-Border Tax
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold">✓</span> 99.9% Uptime SLA Guarantee
+            </li>
+          </ul>
+        </div>
+        <a href="/seller/register" class="w-full py-2.5 bg-slate-900 hover:bg-slate-850 text-white font-medium text-xs tracking-wider uppercase rounded-lg transition-all text-center">
+          Contact Concierge
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Customer & Merchant Testimonials -->
+  <section class="py-16 bg-white border-y border-slate-200/60 px-4 sm:px-6">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center mb-12">
+        <span class="text-[10px] uppercase tracking-[0.25em] font-bold text-slate-400 block mb-2">Social Proof</span>
+        <h2 class="text-2xl md:text-3xl font-serif font-light tracking-wide text-slate-900">Endorsed by Heritage Brands</h2>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="p-6 bg-[#FAF9F6] border border-slate-100 rounded-2xl flex flex-col justify-between">
+          <p class="text-slate-600 text-xs italic leading-relaxed mb-6 font-serif">
+            "PRIGID Commerce gave our Milanese atelier the digital stature of Place Vendôme. Our clients immediately appreciated the sovereign domain autonomy."
+          </p>
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-serif text-xs font-bold">
+              GM
+            </div>
+            <div>
+              <p class="text-xs font-bold text-slate-900 font-sans">Gianni Moretti</p>
+              <p class="text-[10px] text-slate-400 font-sans">Creative Director, Maison Moretti</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 bg-[#FAF9F6] border border-slate-100 rounded-2xl flex flex-col justify-between">
+          <p class="text-slate-600 text-xs italic leading-relaxed mb-6 font-serif">
+            "The direct DHL Express corridor was indispensable. Our bespoke timepieces are insured and tracked flawlessly to collectors in Zurich and Tokyo."
+          </p>
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-serif text-xs font-bold">
+              SK
+            </div>
+            <div>
+              <p class="text-xs font-bold text-slate-900 font-sans">Shun Kurogane</p>
+              <p class="text-[10px] text-slate-400 font-sans">Master Watchmaker, Kurogane Horology</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 bg-[#FAF9F6] border border-slate-100 rounded-2xl flex flex-col justify-between">
+          <p class="text-slate-600 text-xs italic leading-relaxed mb-6 font-serif">
+            "Being listed on the PRIGID marketplace connected our Mayfair showroom with high-intent collectors we could have never reached alone."
+          </p>
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-serif text-xs font-bold">
+              CL
+            </div>
+            <div>
+              <p class="text-xs font-bold text-slate-900 font-sans">Céleste Laurent</p>
+              <p class="text-[10px] text-slate-400 font-sans">Founder, Atelier Céleste</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIP Waitlist / Collector Club Section -->
+  <section class="py-16 sm:py-20 px-4 sm:px-6">
+    <div class="max-w-xl mx-auto text-center">
+      <span class="text-[10px] uppercase tracking-[0.25em] font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100 mb-3 inline-block">
+        VIP Private Salon
+      </span>
+      <h2 class="text-2xl sm:text-3xl font-serif font-light tracking-wide text-slate-900 mb-3">
+        Join the PRIGID Collector Circle
+      </h2>
+      <p class="text-slate-500 text-xs sm:text-sm font-light max-w-md mx-auto mb-8 leading-relaxed">
+        Receive early private preview links to limited-edition drops, bespoke atelier commissions, and new independent maison arrivals.
+      </p>
+
+      <form id="waitlist-form" onsubmit="submitWaitlist(event)" class="flex flex-col sm:flex-row gap-2.5 max-w-md mx-auto">
+        <input 
+          id="waitlist-email"
+          type="email" 
+          required 
+          placeholder="Enter your private email" 
+          class="flex-grow px-4 py-3 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 transition-all font-sans"
+        />
+        <button 
+          type="submit" 
+          class="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs tracking-wider uppercase rounded-lg transition-all shadow-sm font-sans shrink-0"
+        >
+          Request Access
+        </button>
+      </form>
+      <div id="waitlist-feedback" class="mt-4 text-xs font-sans hidden"></div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="bg-slate-950 text-white py-14 px-4 sm:px-6">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 border-b border-slate-800/80 pb-10 mb-8">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-white">
+          <svg class="w-5 h-5" viewBox="0 0 48 48" fill="none">
+            <path d="M35 14C31 10 25.5 8 19.5 8C11 8 4 15 4 24C4 33 11 40 19.5 40C25.5 40 31 38 35 34" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" />
+            <path d="M16 15V33M16 15H23.5C27.5 15 30.5 17.8 30.5 21.5C30.5 25.2 27.5 28 23.5 28H16" stroke="#34d399" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div>
+          <span class="text-sm font-serif font-semibold tracking-wider text-white">PRIGID Commerce</span>
+          <p class="text-[10px] text-slate-400">Curated Luxury Marketplace & E-Commerce Infrastructure</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
+        <a href="#boutiques" class="hover:text-white transition-colors">Directory</a>
+        <a href="/seller" class="hover:text-white transition-colors">Merchant Portal</a>
+        <a href="/seller/login" class="hover:text-white transition-colors">Merchant Sign In</a>
+        <a href="#pricing" class="hover:text-white transition-colors">Platform Pricing</a>
+      </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-[10px] text-slate-500 tracking-wide">
+      <p>© 2026 PRIGID COMMERCE GROUP. ALL RIGHTS RESERVED.</p>
+      <p>GENUINE ARTISANAL PROVENANCE • SECURE TRANSACTIONS</p>
+    </div>
+  </footer>
+
+  <!-- Interactive Marketplace Client Script -->
+  <script>
+    let allStores = [];
+    let currentCategory = 'all';
+    let searchQuery = '';
+
+    // Fetch live marketplace stores from API on mount
+    async function loadMarketplaceStores() {
+      try {
+        const res = await fetch('/api/marketplace/stores');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.stores && Array.isArray(data.stores) && data.stores.length > 0) {
+          allStores = data.stores;
+          renderStoresGrid();
+          updateStatsCount(data.stores.length);
+        }
+      } catch (err) {
+        console.log('[Marketplace] Loaded with pre-rendered boutique catalog.');
+      }
+    }
+
+    function updateStatsCount(count) {
+      const el = document.getElementById('stat-maisons');
+      if (el) el.innerText = count;
+      const countEl = document.getElementById('directory-count');
+      if (countEl) countEl.innerText = `Showing ${count} verified boutiques`;
+    }
+
+    function renderStoresGrid() {
+      const grid = document.getElementById('stores-grid');
+      const emptyState = document.getElementById('no-stores-state');
+      if (!grid || allStores.length === 0) return;
+
+      const filtered = allStores.filter(store => {
+        const matchesCat = currentCategory === 'all' || store.categoryKey === currentCategory;
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return matchesCat;
+
+        const hay = [
+          store.name,
+          store.tagline,
+          store.location,
+          store.category,
+          ...(store.highlights || [])
+        ].join(' ').toLowerCase();
+
+        return matchesCat && hay.includes(q);
+      });
+
+      const countEl = document.getElementById('directory-count');
+      if (countEl) {
+        countEl.innerText = `Showing ${filtered.length} verified ${filtered.length === 1 ? 'boutique' : 'boutiques'}`;
+      }
+
+      if (filtered.length === 0) {
+        grid.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      grid.innerHTML = filtered.map(store => `
+        <article class="store-card group bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between">
+          <div>
+            <div class="relative aspect-[16/10] overflow-hidden bg-slate-100">
+              <img 
+                src="${store.heroImage}" 
+                alt="${store.name}" 
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                loading="lazy"
+              />
+              <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"></div>
+              
+              <div class="absolute top-3 left-3 flex gap-2">
+                <span class="text-[9px] font-bold uppercase tracking-wider bg-slate-900/90 text-white px-2.5 py-1 rounded-full backdrop-blur-xs">
+                  ${store.badge || 'Verified Maison'}
+                </span>
+              </div>
+              <div class="absolute top-3 right-3">
+                <span class="text-[10px] font-semibold bg-white/90 text-slate-800 px-2 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-1">
+                  ★ ${store.rating || '4.98'}
+                </span>
+              </div>
+
+              <div class="absolute bottom-3 left-3 right-3 text-white">
+                <p class="text-[10px] font-medium tracking-wide uppercase text-slate-200">
+                  ${store.location}
+                </p>
+              </div>
+            </div>
+
+            <div class="p-5 sm:p-6">
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <h3 class="text-lg font-serif font-bold text-slate-950 group-hover:text-slate-700 transition-colors">
+                  ${store.name}
+                </h3>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 shrink-0">
+                  ${store.currency}
+                </span>
+              </div>
+              
+              <p class="text-xs text-slate-500 font-light leading-relaxed mb-4">
+                ${store.tagline}
+              </p>
+
+              <div class="flex flex-wrap gap-1.5 mb-5">
+                ${(store.highlights || []).map(h => `
+                  <span class="text-[10px] font-medium bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/50">
+                    ${h}
+                  </span>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+
+          <div class="px-5 sm:px-6 pb-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-auto">
+            <span class="text-[10px] font-mono text-slate-400 truncate max-w-[130px]">
+              ${store.customDomain || store.slug + '.prigidcommerce.com'}
+            </span>
+            <a 
+              href="${store.storeUrl}" 
+              class="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-all shadow-xs"
+            >
+              Enter Boutique
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
+            </a>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    function filterCategory(cat) {
+      currentCategory = cat;
+      document.querySelectorAll('.cat-pill').forEach(btn => {
+        btn.classList.remove('bg-slate-900', 'text-white');
+        btn.classList.add('bg-white', 'border', 'border-slate-200', 'text-slate-600');
+      });
+      event.currentTarget.classList.remove('bg-white', 'border', 'border-slate-200', 'text-slate-600');
+      event.currentTarget.classList.add('bg-slate-900', 'text-white');
+
+      if (allStores.length > 0) {
+        renderStoresGrid();
+      } else {
+        // Fallback filter for static initial HTML
+        filterStaticCards();
+      }
+    }
+
+    function handleStoreSearch(e) {
+      searchQuery = e.target.value;
+      const clearBtn = document.getElementById('store-search-clear');
+      if (clearBtn) {
+        if (searchQuery) clearBtn.classList.remove('hidden');
+        else clearBtn.classList.add('hidden');
+      }
+
+      if (allStores.length > 0) {
+        renderStoresGrid();
+      } else {
+        filterStaticCards();
+      }
+    }
+
+    function clearStoreSearch() {
+      const input = document.getElementById('store-search-input');
+      const clearBtn = document.getElementById('store-search-clear');
+      if (input) input.value = '';
+      if (clearBtn) clearBtn.classList.add('hidden');
+      searchQuery = '';
+      currentCategory = 'all';
+
+      document.querySelectorAll('.cat-pill').forEach((btn, idx) => {
+        if (idx === 0) {
+          btn.classList.add('bg-slate-900', 'text-white');
+          btn.classList.remove('bg-white', 'border', 'border-slate-200', 'text-slate-600');
+        } else {
+          btn.classList.remove('bg-slate-900', 'text-white');
+          btn.classList.add('bg-white', 'border', 'border-slate-200', 'text-slate-600');
+        }
+      });
+
+      if (allStores.length > 0) {
+        renderStoresGrid();
+      } else {
+        filterStaticCards();
+      }
+    }
+
+    function filterStaticCards() {
+      const cards = document.querySelectorAll('.store-card');
+      const emptyState = document.getElementById('no-stores-state');
+      let visible = 0;
+      const q = searchQuery.toLowerCase().trim();
+
+      cards.forEach(card => {
+        const cat = card.getAttribute('data-category');
+        const name = (card.getAttribute('data-name') || '').toLowerCase();
+        const city = (card.getAttribute('data-city') || '').toLowerCase();
+        const craft = (card.getAttribute('data-craft') || '').toLowerCase();
+        const hay = `${name} ${city} ${craft}`;
+
+        const matchCat = currentCategory === 'all' || cat === currentCategory;
+        const matchQ = !q || hay.includes(q);
+
+        if (matchCat && matchQ) {
+          card.classList.remove('hidden');
+          visible++;
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+
+      const countEl = document.getElementById('directory-count');
+      if (countEl) countEl.innerText = `Showing ${visible} verified ${visible === 1 ? 'boutique' : 'boutiques'}`;
+
+      if (visible === 0) emptyState.classList.remove('hidden');
+      else emptyState.classList.add('hidden');
+    }
+
+    function setBilling(mode) {
+      const btnMonthly = document.getElementById('btn-monthly');
+      const btnAnnual = document.getElementById('btn-annual');
+      const priceStarter = document.getElementById('price-starter');
+      const priceGrowth = document.getElementById('price-growth');
+      const priceEnterprise = document.getElementById('price-enterprise');
+
+      if (mode === 'annual') {
+        btnAnnual.classList.add('bg-slate-900', 'text-white');
+        btnAnnual.classList.remove('text-slate-500');
+        btnMonthly.classList.remove('bg-slate-900', 'text-white');
+        btnMonthly.classList.add('text-slate-500');
+
+        priceStarter.innerText = '12';
+        priceGrowth.innerText = '20';
+        priceEnterprise.innerText = '40';
+      } else {
+        btnMonthly.classList.add('bg-slate-900', 'text-white');
+        btnMonthly.classList.remove('text-slate-500');
+        btnAnnual.classList.remove('bg-slate-900', 'text-white');
+        btnAnnual.classList.add('text-slate-500');
+
+        priceStarter.innerText = '15';
+        priceGrowth.innerText = '25';
+        priceEnterprise.innerText = '50';
+      }
+    }
+
+    async function submitWaitlist(e) {
+      e.preventDefault();
+      const emailInput = document.getElementById('waitlist-email');
+      const feedback = document.getElementById('waitlist-feedback');
+      const submitBtn = e.target.querySelector('button');
+      
+      const email = emailInput.value.trim();
+      if (!email) return;
+
+      submitBtn.disabled = true;
+      const originalText = submitBtn.innerText;
+      submitBtn.innerText = "Submitting...";
+      feedback.classList.remove('hidden', 'text-emerald-700', 'text-red-700');
+      feedback.classList.add('text-slate-500');
+      feedback.innerText = "Securing your spot in the salon...";
+
+      try {
+        const res = await fetch('/api/waitlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        
+        const data = await res.json();
+        submitBtn.disabled = false;
+        submitBtn.innerText = originalText;
+
+        if (res.ok) {
+          emailInput.value = "";
+          feedback.classList.remove('text-slate-500');
+          feedback.classList.add('text-emerald-700');
+          feedback.innerText = "✨ Request accepted. Our concierge will contact you with private salon invitations.";
+        } else {
+          feedback.classList.remove('text-slate-500');
+          feedback.classList.add('text-red-700');
+          feedback.innerText = data.error || "Failed to submit. Please try again.";
+        }
+      } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = originalText;
+        feedback.classList.remove('text-slate-500');
+        feedback.classList.add('text-red-700');
+        feedback.innerText = "Network error. Please check your connection and try again.";
+      }
+    }
+
+    // Auto load on ready
+    document.addEventListener('DOMContentLoaded', loadMarketplaceStores);
+  </script>
+</body>
+</html>

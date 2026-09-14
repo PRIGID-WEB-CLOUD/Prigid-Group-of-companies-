@@ -5,11 +5,13 @@ import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
+import { useBranding } from "@/contexts/BrandingContext";
 
 export default function Header() {
   const { user } = useAuth();
   const { cartCount } = useCart();
   const { currencyCode, setCurrency, currencies } = useCurrency();
+  const { branding, activeSlug } = useBranding();
   const [location, navigate] = useLocation();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -19,6 +21,7 @@ export default function Header() {
   const currencyDropdownRef = useRef<HTMLDivElement>(null);
 
   const activeCurrency = currencies.find(c => c.code === currencyCode) || currencies[0];
+  const homeHref = activeSlug ? `/boutique/${activeSlug}` : "/";
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,8 +51,8 @@ export default function Header() {
   return (
     <header className={`fixed top-0 w-full z-50 transition-all duration-500 ${isScrolled ? "bg-white/80 backdrop-blur-xl border-b border-slate-100 py-4" : "bg-transparent py-8"}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-        <Link href="/" className={`text-xl md:text-2xl font-serif tracking-[0.3em] uppercase transition-colors duration-500 ${isScrolled ? "text-slate-900" : "text-white"}`}>
-          LUXE
+        <Link href={homeHref} className={`text-xl md:text-2xl font-serif tracking-[0.3em] uppercase transition-colors duration-500 ${isScrolled ? "text-slate-900" : "text-white"}`}>
+          {branding.brand_logo_text || "LUXE"}
         </Link>
 
         <nav className="hidden md:flex items-center space-x-12">

@@ -1,9 +1,10 @@
 import { Router } from "express";
+import { type TenantRequest } from "../middleware/tenantContext";
 import { randomUUID, createHmac, createHash } from "crypto";
 import { addEvent, getChannelCredentials, persistCredentials, encryptSecret, decryptSecret } from "./channels";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { db, twitterHashtagsTable, twitterAutoRulesTable, twitterTweetQueueTable, twitterContentTemplatesTable, twitterSchedulerSettingsTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 const router = Router();
 router.use("/twitter", requireAdmin);
@@ -11,7 +12,7 @@ router.use("/channels/twitter", requireAdmin);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getTwCreds() { return getChannelCredentials("twitter"); }
+function getTwCreds(storeId: string) { return getChannelCredentials("twitter", storeId); }
 
 function oauthSign(
   method: string,
@@ -30,85 +31,98 @@ function oauthSign(
 
 // ── Hashtag Routes ────────────────────────────────────────────────────────────
 
-router.get("/twitter/hashtags", async (_req, res) => {
-  return res.json(await db.select().from(twitterHashtagsTable).orderBy(desc(twitterHashtagsTable.createdAt)));
+router.get("/twitter/hashtags", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(twitterHashtagsTable).where(eq(twitterHashtagsTable.storeId, storeId)).orderBy(desc(twitterHashtagsTable.createdAt)));
 });
 
-router.post("/twitter/hashtags", async (req, res) => {
+router.post("/twitter/hashtags", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { tag } = req.body as { tag: string };
-  const [ht] = await db.insert(twitterHashtagsTable).values({ id: randomUUID(), tag }).returning();
+  const [ht] = await db.insert(twitterHashtagsTable).values({ id: randomUUID(), storeId, tag }).returning();
   return res.status(201).json(ht);
 });
 
-router.delete("/twitter/hashtags/:id", async (req, res) => {
-  await db.delete(twitterHashtagsTable).where(eq(twitterHashtagsTable.id, req.params.id as string));
+router.delete("/twitter/hashtags/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  await db.delete(twitterHashtagsTable).where(and(eq(twitterHashtagsTable.id, req.params.id as string), eq(twitterHashtagsTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
 // ── Auto-rule Routes ──────────────────────────────────────────────────────────
 
-router.get("/twitter/rules", async (_req, res) => {
-  return res.json(await db.select().from(twitterAutoRulesTable).orderBy(desc(twitterAutoRulesTable.createdAt)));
+router.get("/twitter/rules", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(twitterAutoRulesTable).where(eq(twitterAutoRulesTable.storeId, storeId)).orderBy(desc(twitterAutoRulesTable.createdAt)));
 });
 
-router.post("/twitter/rules", async (req, res) => {
+router.post("/twitter/rules", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { trigger, action, template, active } = req.body as { trigger: string; action: string; template?: string; active?: boolean };
   const [rule] = await db.insert(twitterAutoRulesTable).values({
-    id: randomUUID(), trigger, action, template: template ?? "default", active: active ?? true,
+    id: randomUUID(), storeId, trigger, action, template: template ?? "default", active: active ?? true,
   }).returning();
   return res.status(201).json(rule);
 });
 
-router.put("/twitter/rules/:id", async (req, res) => {
+router.put("/twitter/rules/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const [rule] = await db.update(twitterAutoRulesTable)
     .set({ active: Boolean(req.body.active) })
-    .where(eq(twitterAutoRulesTable.id, req.params.id as string)).returning();
+    .where(and(eq(twitterAutoRulesTable.id, req.params.id as string), eq(twitterAutoRulesTable.storeId, storeId))).returning();
   if (!rule) return res.status(404).json({ error: "Rule not found" });
   return res.json(rule);
 });
 
 // ── Queue Routes ──────────────────────────────────────────────────────────────
 
-router.get("/twitter/queue", async (_req, res) => {
-  return res.json(await db.select().from(twitterTweetQueueTable).orderBy(desc(twitterTweetQueueTable.createdAt)));
+router.get("/twitter/queue", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(twitterTweetQueueTable).where(eq(twitterTweetQueueTable.storeId, storeId)).orderBy(desc(twitterTweetQueueTable.createdAt)));
 });
 
-router.post("/twitter/queue", async (req, res) => {
+router.post("/twitter/queue", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { text, scheduledFor, status, imageStyle } = req.body as { text: string; scheduledFor?: string; status?: string; imageStyle?: string };
   const [tweet] = await db.insert(twitterTweetQueueTable).values({
-    id: randomUUID(), text, scheduledFor: scheduledFor ?? "", status: status ?? "Queued", imageStyle: imageStyle ?? "None",
+    id: randomUUID(), storeId, text, scheduledFor: scheduledFor ?? "", status: status ?? "Queued", imageStyle: imageStyle ?? "None",
   }).returning();
   return res.status(201).json(tweet);
 });
 
-router.put("/twitter/queue/:id", async (req, res) => {
+router.put("/twitter/queue/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const [tweet] = await db.update(twitterTweetQueueTable)
     .set({ status: String(req.body.status) })
-    .where(eq(twitterTweetQueueTable.id, req.params.id as string)).returning();
+    .where(and(eq(twitterTweetQueueTable.id, req.params.id as string), eq(twitterTweetQueueTable.storeId, storeId))).returning();
   if (!tweet) return res.status(404).json({ error: "Tweet not found" });
   return res.json(tweet);
 });
 
-router.delete("/twitter/queue/:id", async (req, res) => {
-  await db.delete(twitterTweetQueueTable).where(eq(twitterTweetQueueTable.id, req.params.id as string));
+router.delete("/twitter/queue/:id", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  await db.delete(twitterTweetQueueTable).where(and(eq(twitterTweetQueueTable.id, req.params.id as string), eq(twitterTweetQueueTable.storeId, storeId)));
   return res.json({ ok: true });
 });
 
 // ── Template Routes ───────────────────────────────────────────────────────────
 
-router.get("/twitter/templates", async (_req, res) => {
-  return res.json(await db.select().from(twitterContentTemplatesTable).orderBy(desc(twitterContentTemplatesTable.createdAt)));
+router.get("/twitter/templates", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(twitterContentTemplatesTable).where(eq(twitterContentTemplatesTable.storeId, storeId)).orderBy(desc(twitterContentTemplatesTable.createdAt)));
 });
 
-router.post("/twitter/templates", async (req, res) => {
+router.post("/twitter/templates", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const { name, body } = req.body as { name: string; body: string };
-  const [tpl] = await db.insert(twitterContentTemplatesTable).values({ id: randomUUID(), name, body }).returning();
+  const [tpl] = await db.insert(twitterContentTemplatesTable).values({ id: randomUUID(), storeId, name, body }).returning();
   return res.status(201).json(tpl);
 });
 
-router.put("/twitter/templates/:id/use", async (req, res) => {
+router.put("/twitter/templates/:id/use", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const [tpl] = await db.select().from(twitterContentTemplatesTable)
-    .where(eq(twitterContentTemplatesTable.id, req.params.id as string)).limit(1);
+    .where(and(eq(twitterContentTemplatesTable.id, req.params.id as string), eq(twitterContentTemplatesTable.storeId, storeId))).limit(1);
   if (!tpl) return res.status(404).json({ error: "Template not found" });
   const [updated] = await db.update(twitterContentTemplatesTable)
     .set({ usageCount: tpl.usageCount + 1 })
@@ -118,20 +132,23 @@ router.put("/twitter/templates/:id/use", async (req, res) => {
 
 // ── Scheduler Routes ──────────────────────────────────────────────────────────
 
-router.get("/twitter/scheduler", async (_req, res) => {
+router.get("/twitter/scheduler", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const [scheduler] = await db.select().from(twitterSchedulerSettingsTable)
-    .where(eq(twitterSchedulerSettingsTable.id, "default")).limit(1);
-  return res.json(scheduler ?? { id: "default", schedulerOn: false, dropFrequency: "Daily Digest (6 PM)", imageStyle: "Product Photo" });
+    .where(eq(twitterSchedulerSettingsTable.storeId, storeId)).limit(1);
+  return res.json(scheduler ?? { id: "default", storeId, schedulerOn: false, dropFrequency: "Daily Digest (6 PM)", imageStyle: "Product Photo" });
 });
 
-router.put("/twitter/scheduler", async (req, res) => {
+router.put("/twitter/scheduler", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
   const [scheduler] = await db.insert(twitterSchedulerSettingsTable).values({
     id: "default",
+    storeId,
     schedulerOn: Boolean(req.body.schedulerOn ?? false),
     dropFrequency: String(req.body.dropFrequency ?? "Daily Digest (6 PM)"),
     imageStyle: String(req.body.imageStyle ?? "Product Photo"),
   }).onConflictDoUpdate({
-    target: twitterSchedulerSettingsTable.id,
+    target: [twitterSchedulerSettingsTable.id, twitterSchedulerSettingsTable.storeId],
     set: {
       schedulerOn: Boolean(req.body.schedulerOn ?? false),
       dropFrequency: String(req.body.dropFrequency ?? "Daily Digest (6 PM)"),
@@ -149,8 +166,9 @@ const TWITTER_OAUTH_SCOPES = ["tweet.read", "tweet.write", "users.read", "offlin
 
 // ── Live: Twitter/X Me ────────────────────────────────────────────────────────
 
-router.get("/twitter/me", async (req, res) => {
-  const creds = await getTwCreds();
+router.get("/twitter/me", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const creds = await getTwCreds(storeId);
   
   let origin = "";
   if (req.headers.referer) {
@@ -277,8 +295,9 @@ router.get("/twitter/me", async (req, res) => {
 
 // ── Live: Publish Tweet ───────────────────────────────────────────────────────
 
-router.post("/twitter/posts/publish", async (req, res) => {
-  const creds = await getTwCreds();
+router.post("/twitter/posts/publish", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const creds = await getTwCreds(storeId);
   let { text, taggedProducts } = req.body as { text: string; taggedProducts?: Array<{ id: string; name: string; price: number; slug?: string }> };
   if (!text?.trim()) return res.status(400).json({ error: "Tweet text is required." });
 
@@ -313,9 +332,9 @@ router.post("/twitter/posts/publish", async (req, res) => {
 
       const tagCount = taggedProducts?.length || 0;
       const tagSuffix = tagCount > 0 ? ` [${tagCount} product${tagCount > 1 ? "s" : ""} tagged]` : "";
-      addEvent("twitter", "Tweet published", `"${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"${tagSuffix}`, "sync");
+      addEvent("twitter", "Tweet published", `"${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"${tagSuffix}`, "sync", storeId);
       const [queued] = await db.insert(twitterTweetQueueTable).values({
-        id: randomUUID(), text,
+        id: randomUUID(), storeId, text,
         scheduledFor: new Date().toISOString(),
         status: "Published", imageStyle: tagCount > 0 ? "Product Card" : "None",
       }).returning();
@@ -384,9 +403,9 @@ router.post("/twitter/posts/publish", async (req, res) => {
       });
     }
 
-    addEvent("twitter", "Tweet published", `"${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`, "sync");
+    addEvent("twitter", "Tweet published", `"${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`, "sync", storeId);
     const [queued] = await db.insert(twitterTweetQueueTable).values({
-      id: randomUUID(), text,
+      id: randomUUID(), storeId, text,
       scheduledFor: new Date().toISOString(),
       status: "Published", imageStyle: "None",
     }).returning();
@@ -402,8 +421,9 @@ router.post("/twitter/posts/publish", async (req, res) => {
 
 // ── Verify credentials ────────────────────────────────────────────────────────
 
-router.get("/twitter/verify", async (_req, res) => {
-  const creds = await getTwCreds();
+router.get("/twitter/verify", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const creds = await getTwCreds(storeId);
   const bearerToken = creds["bearer_token"] || creds["access_token"];
   if (!bearerToken) {
     return res.status(400).json({ ok: false, error: "Missing Twitter Bearer Token — add credentials in channel settings." });
@@ -432,8 +452,9 @@ router.get("/twitter/verify", async (_req, res) => {
 
 // ── OAuth 2.0 PKCE Authorization ──────────────────────────────────────────────
 
-router.get("/twitter/auth-url", async (req, res) => {
-  const creds = await getTwCreds();
+router.get("/twitter/auth-url", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const creds = await getTwCreds(storeId);
   
   let origin = "";
   if (req.headers.referer) {
@@ -472,8 +493,8 @@ router.get("/twitter/auth-url", async (req, res) => {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    // Encrypt code_verifier and callbackUrl stateless inside state so callback is immune to cookie iframe session issues or dynamic proxy mismatches
-    const statePayload = JSON.stringify({ code_verifier, callbackUrl, ts: Date.now() });
+    // Encrypt code_verifier, callbackUrl and storeId stateless inside state so callback is immune to cookie iframe session issues or dynamic proxy mismatches
+    const statePayload = JSON.stringify({ code_verifier, callbackUrl, storeId, ts: Date.now() });
     const state = encryptSecret(statePayload);
 
     const scopes = TWITTER_OAUTH_SCOPES.join(" ");
@@ -509,15 +530,15 @@ router.get("/twitter/callback", async (req, res) => {
   }
 
   try {
-    // Decrypt the code_verifier and callbackUrl from state
+    // Decrypt the code_verifier, callbackUrl and storeId from state
     const decryptedState = JSON.parse(decryptSecret(state as string));
-    const { code_verifier, callbackUrl, ts } = decryptedState;
+    const { code_verifier, callbackUrl, storeId, ts } = decryptedState;
 
-    if (!code_verifier || !callbackUrl || Date.now() - ts > 600000) {
+    if (!code_verifier || !callbackUrl || !storeId || Date.now() - ts > 600000) {
       throw new Error("State has expired or is invalid. Please try initiating authorization again.");
     }
 
-    const creds = await getTwCreds();
+    const creds = await getTwCreds(storeId);
     const client_id = creds["client_id"] || process.env.TWITTER_CLIENT_ID;
     const client_secret = creds["client_secret"] || process.env.TWITTER_CLIENT_SECRET;
 
@@ -570,8 +591,8 @@ router.get("/twitter/callback", async (req, res) => {
       updatedCreds["refresh_token"] = refresh_token;
     }
 
-    await persistCredentials("twitter", updatedCreds);
-    addEvent("twitter", "OAuth Account connected", "Successfully logged in via 'Connect with X' OAuth.", "sync");
+    await persistCredentials("twitter", updatedCreds, storeId);
+    addEvent("twitter", "OAuth Account connected", "Successfully logged in via 'Connect with X' OAuth.", "sync", storeId);
 
     console.log("[Twitter/X OAuth Code Exchange Success] Credentials saved securely.");
 
@@ -604,8 +625,9 @@ router.get("/twitter/callback", async (req, res) => {
 });
 
 // ── Config status for frontend UI ──────────────────────────────────────────────
-router.get("/twitter/config", async (_req, res) => {
-  const creds = await getTwCreds();
+router.get("/twitter/config", async (req: TenantRequest, res) => {
+  const storeId = req.storeId!;
+  const creds = await getTwCreds(storeId);
   const hasEnvClientId = Boolean(process.env.TWITTER_CLIENT_ID?.trim());
   const hasEnvClientSecret = Boolean(process.env.TWITTER_CLIENT_SECRET?.trim());
   const hasDbClientId = Boolean(creds["client_id"]?.trim());

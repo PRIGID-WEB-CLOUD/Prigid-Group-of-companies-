@@ -1,7 +1,8 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { db, sessionsTable, usersTable, teamMembersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { createHash } from "node:crypto";
+import { type TenantRequest } from "./tenantContext";
 
 export const SESSION_COOKIE = "luxe_session";
 
@@ -27,11 +28,16 @@ declare global {
   }
 }
 
-export async function resolveTeamRole(email: string, systemRole: UserRole): Promise<"Owner" | "Admin" | "Editor" | "Viewer"> {
-  const [member] = await db.select({ role: teamMembersTable.role })
+export async function resolveTeamRole(email: string, systemRole: UserRole, storeId?: string): Promise<"Owner" | "Admin" | "Editor" | "Viewer"> {
+  let query = db.select({ role: teamMembersTable.role })
     .from(teamMembersTable)
-    .where(eq(teamMembersTable.email, email))
-    .limit(1);
+    .where(eq(teamMembersTable.email, email));
+  
+  if (storeId) {
+    query = query.where(and(eq(teamMembersTable.email, email), eq(teamMembersTable.storeId, storeId))) as any;
+  }
+
+  const [member] = await query.limit(1);
   
   if (member) {
     const r = member.role.trim().toLowerCase();
@@ -65,38 +71,63 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-export async function getSessionUser(req: Request): Promise<StoredUser | null> {
+export async function getSessionUser(req: Request, storeId?: string): Promise<StoredUser | null> {
   const token = extractToken(req);
   if (!token) return null;
+  
+  let filters = eq(sessionsTable.token, sessionDigest(token));
+  if (storeId) {
+    filters = and(filters, eq(sessionsTable.storeId, storeId));
+  }
+
   const rows = await db
     .select({ user: usersTable, session: sessionsTable })
     .from(sessionsTable)
     .innerJoin(usersTable, eq(sessionsTable.userId, usersTable.id))
-    .where(eq(sessionsTable.token, sessionDigest(token)))
+    .where(filters)
     .limit(1);
   const row = rows[0];
   if (!row) return null;
   if (new Date() > row.session.expiresAt) return null;
   
+  // Cross-tenant check
+  if (storeId && row.user.role !== "SUPER_ADMIN" && row.user.storeId !== storeId) {
+    return null;
+  }
+
   const systemRole = row.user.role as UserRole;
-  const teamRole = await resolveTeamRole(row.user.email, systemRole);
+  const teamRole = await resolveTeamRole(row.user.email, systemRole, storeId || row.user.storeId);
   return toStoredUser(row.user, teamRole);
 }
 
-export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+export async function requireAdmin(req: TenantRequest, res: Response, next: NextFunction) {
   const token = extractToken(req);
   if (!token) return res.status(401).json({ error: "Authentication required." });
 
-  const rows = await db
-    .select({ user: usersTable, expiresAt: sessionsTable.expiresAt })
+  // If a store was resolved, ensure the user belongs to this store
+  const storeId = req.storeId;
+  
+  let filters = eq(sessionsTable.token, sessionDigest(token));
+  if (storeId) {
+    filters = and(filters, eq(sessionsTable.storeId, storeId));
+  }
+
+  const query = db
+    .select({ user: usersTable, expiresAt: sessionsTable.expiresAt, sessionStoreId: sessionsTable.storeId })
     .from(sessionsTable)
     .innerJoin(usersTable, eq(sessionsTable.userId, usersTable.id))
-    .where(eq(sessionsTable.token, sessionDigest(token)))
-    .limit(1);
+    .where(filters);
 
+  const rows = await query.limit(1);
   const row = rows[0];
-  if (!row) return res.status(401).json({ error: "Session expired — please log in again." });
+
+  if (!row) return res.status(401).json({ error: "Session expired or invalid for this store — please log in again." });
   if (new Date() > row.expiresAt) return res.status(401).json({ error: "Session expired — please log in again." });
+
+  // Multi-tenant check: User must belong to the resolved store OR be a global SUPER_ADMIN
+  if (row.user.role !== "SUPER_ADMIN" && storeId && row.user.storeId !== storeId) {
+    return res.status(403).json({ error: "Access Denied: You do not have permission for this store." });
+  }
 
   const systemRole = row.user.role as UserRole;
   if (systemRole !== "ADMIN" && systemRole !== "SUPER_ADMIN") {
@@ -104,7 +135,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   }
 
   // Resolve active fine-grained team role
-  const teamRole = await resolveTeamRole(row.user.email, systemRole);
+  const teamRole = await resolveTeamRole(row.user.email, systemRole, storeId || row.user.storeId);
   req.adminUser = toStoredUser(row.user, teamRole);
 
   const method = req.method;
@@ -155,7 +186,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   return next();
 }
 
-export async function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+export async function requireSuperAdmin(req: TenantRequest, res: Response, next: NextFunction) {
   const token = extractToken(req);
   if (!token) return res.status(401).json({ error: "Authentication required." });
 

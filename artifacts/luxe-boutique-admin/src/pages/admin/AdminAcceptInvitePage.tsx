@@ -136,7 +136,7 @@ export default function AdminAcceptInvitePage() {
             <div>
               <h1 className="font-serif text-[22px] font-semibold mb-2">Already Joined</h1>
               <p className="text-sm font-[Manrope] text-[#7c839b] leading-relaxed">
-                This invitation has already been accepted. Sign in to access the admin portal.
+                This invitation has already been accepted. Sign in to access the seller portal.
               </p>
             </div>
             <button onClick={() => navigate("/login")}
@@ -159,7 +159,7 @@ export default function AdminAcceptInvitePage() {
               <div className="bg-white rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.4)] overflow-hidden">
                 {/* Top bar */}
                 <div className="bg-[#080e0b] px-8 py-5 text-center">
-                  <p className="text-[11px] font-[Manrope] font-bold text-[#7c839b] uppercase tracking-widest mb-1">Admin Portal Invitation</p>
+                  <p className="text-[11px] font-[Manrope] font-bold text-[#7c839b] uppercase tracking-widest mb-1">Seller Portal Invitation</p>
                   <p className="text-white font-serif text-[22px] font-semibold">You're invited to join the team</p>
                 </div>
 
@@ -178,7 +178,7 @@ export default function AdminAcceptInvitePage() {
                             : <>Invitation for <strong className="text-black">{info.email}</strong></>
                           }
                         </p>
-                        <p className="text-xs font-[Manrope] text-[#7c839b] mt-0.5">to the Luxe Boutique admin portal.</p>
+                        <p className="text-xs font-[Manrope] text-[#7c839b] mt-0.5">to the Luxe Boutique seller portal.</p>
                       </div>
                     </div>
                   )}
@@ -218,7 +218,7 @@ export default function AdminAcceptInvitePage() {
                   </div>
 
                   <p className="text-center text-[10px] font-[Manrope] text-[#c6c6cd] leading-relaxed">
-                    By accepting, you'll gain <strong className="text-[#7c839b]">{info?.role ?? "team"}</strong> access to the admin portal.
+                    By accepting, you'll gain <strong className="text-[#7c839b]">{info?.role ?? "team"}</strong> access to the seller portal.
                     You'll sign in using the OTP method via <strong className="text-[#7c839b]">{info?.email ?? "your email"}</strong>.
                   </p>
                 </div>
@@ -244,7 +244,7 @@ export default function AdminAcceptInvitePage() {
             <div className="w-full bg-[#f8f9ff] border border-[#e5eeff] rounded-xl p-4 text-left space-y-2">
               <p className="text-[10px] font-[Manrope] font-bold uppercase tracking-widest text-[#7c839b]">How to sign in</p>
               {[
-                { icon: "mail",         text: `Go to the admin sign-in page` },
+                { icon: "mail",         text: `Go to the seller sign-in page` },
                 { icon: "mark_email_read", text: `Enter ${stage.email}` },
                 { icon: "pin",          text: "Enter the 6-digit code from your email" },
               ].map((s, i) => (
@@ -260,14 +260,14 @@ export default function AdminAcceptInvitePage() {
             <button onClick={() => navigate("/login")}
               className="w-full py-3.5 bg-black text-white font-[Manrope] font-bold text-xs tracking-widest uppercase rounded-xl hover:bg-[#006c49] transition-all shadow-lg flex items-center justify-center gap-2">
               <span className="material-symbols-outlined text-sm">login</span>
-              Go to Admin Sign In
+              Go to Seller Sign In
             </button>
           </div>
         )}
       </div>
 
       <p className="mt-8 text-[10px] font-[Manrope] text-[#3a4040] tracking-widest uppercase">
-        © {new Date().getFullYear()} Luxe Boutique · Admin Portal
+        © {new Date().getFullYear()} Luxe Boutique · Seller Portal
       </p>
     </div>
   );

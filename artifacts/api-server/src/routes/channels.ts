@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Response } from "express";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, createHmac } from "crypto";
 import { requireAdmin } from "../middleware/requireAdmin";
 import { logger } from "../lib/logger";
@@ -10,8 +10,9 @@ import {
   channelEventLogsTable,
   channelWebhooksTable,
 } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { type TenantRequest } from "../middleware/tenantContext";
 
 const router = Router();
 router.use("/channels", requireAdmin);
@@ -147,7 +148,7 @@ async function verifyConnection(channelId: string, creds: Record<string, string>
     const endpointUrl = "https://api.twitter.com/2/users/me";
     const queryParams = { "user.fields": "name,username" };
 
-    let response: Response;
+    let response: any;
     if (hasOauth1) {
       const oauthSignLocal = (
         method: string,
@@ -194,8 +195,8 @@ async function verifyConnection(channelId: string, creds: Record<string, string>
       response = await fetch(fullUrl, { headers: { Authorization: authHeader } });
 
       // Self-healing: if OAuth 1.0a fails with 401/403, and bearerToken is present, try fallback
-      if (!response.ok && (response.status === 401 || response.status === 403) && bearerToken) {
-        console.warn(`[Twitter/X verifyChannel] OAuth 1.0a verification returned HTTP ${response.status}. Trying fallback to App Bearer Token...`);
+      if (!(response as any).ok && ((response as any).status === 401 || (response as any).status === 403) && bearerToken) {
+        console.warn(`[Twitter/X verifyChannel] OAuth 1.0a verification returned HTTP ${(response as any).status}. Trying fallback to App Bearer Token...`);
         const queryStringFallback = new URLSearchParams(queryParams).toString();
         const fallbackUrl = `${endpointUrl}?${queryStringFallback}`;
         response = await fetch(fallbackUrl, { headers: { Authorization: `Bearer ${bearerToken}` } });
@@ -206,13 +207,13 @@ async function verifyConnection(channelId: string, creds: Record<string, string>
       response = await fetch(fullUrl, { headers: { Authorization: `Bearer ${bearerToken}` } });
     }
 
-    const text = await response.text();
+    const text = await (response as any).text();
     let data: Record<string, unknown> = {};
     try { data = JSON.parse(text); } catch { data = { rawText: text }; }
 
-    return response.ok
+    return (response as any).ok
       ? { pass: true, detail: "X/Twitter API responded successfully.", account: (data.data as Record<string, unknown> | undefined) }
-      : { pass: false, detail: (data.detail as string) ?? (data.title as string) ?? `Provider returned HTTP ${response.status}` };
+      : { pass: false, detail: (data.detail as string) ?? (data.title as string) ?? `Provider returned HTTP ${(response as any).status}` };
   }
   return { pass: false, detail: `Unsupported channel: ${channelId}.` };
 }
@@ -223,35 +224,36 @@ const DEFAULT_WEBHOOKS = [
   { webhookId: "customer_signup", label: "Customer Sign-up", url: "/webhooks/customer-signup", active: true },
 ];
 
-export async function getChannelCredentials(channel: string): Promise<Record<string, string>> {
+export async function getChannelCredentials(channel: string, storeId: string): Promise<Record<string, string>> {
   const [row] = await db.select().from(channelCredentialsTable)
-    .where(eq(channelCredentialsTable.channel, channel)).limit(1);
+    .where(and(eq(channelCredentialsTable.channel, channel), eq(channelCredentialsTable.storeId, storeId))).limit(1);
   const stored = row?.data ?? {};
   const decrypted = Object.fromEntries(Object.entries(stored).map(([key, value]) => [key, decryptSecret(value as any)]));
   return decrypted;
 }
 
-export async function persistCredentials(channel: string, data: Record<string, string>) {
+export async function persistCredentials(channel: string, data: Record<string, string>, storeId: string) {
   const encrypted = Object.fromEntries(Object.entries(data).map(([key, value]) => [
     key,
     SECRET_FIELDS.has(key) && value ? encryptSecret(value) : value,
   ]));
   await db.insert(channelCredentialsTable)
-    .values({ channel, data: encrypted, updatedAt: new Date() })
+    .values({ channel, storeId, data: encrypted, updatedAt: new Date() })
     .onConflictDoUpdate({
-      target: channelCredentialsTable.channel,
+      target: [channelCredentialsTable.channel, channelCredentialsTable.storeId],
       set: { data: encrypted, updatedAt: new Date() },
     });
 }
 
-export async function ensureDefaults() {
+export async function ensureDefaults(storeId: string) {
   for (const channelId of CHANNELS) {
-    const creds = await getChannelCredentials(channelId);
+    const creds = await getChannelCredentials(channelId, storeId);
     const hasCreds = Object.values(creds).some((v) => Boolean(v && !v.startsWith("••••")));
 
     await db.insert(channelConfigsTable)
       .values({
         id: randomUUID(),
+        storeId,
         channelId,
         status: "DISCONNECTED",
         latency: 0,
@@ -259,7 +261,7 @@ export async function ensureDefaults() {
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: channelConfigsTable.channelId,
+        target: [channelConfigsTable.channelId, channelConfigsTable.storeId],
         set: hasCreds
           ? { updatedAt: new Date() }
           : { status: "DISCONNECTED", latency: 0, updatedAt: new Date() },
@@ -268,16 +270,8 @@ export async function ensureDefaults() {
 
   for (const webhook of DEFAULT_WEBHOOKS) {
     await db.insert(channelWebhooksTable)
-      .values({ id: randomUUID(), ...webhook })
-      .onConflictDoNothing({ target: channelWebhooksTable.webhookId });
-  }
-
-  // Remove any legacy dummy seed events that were previously populated
-  const dummyEvents = await db.select().from(channelEventLogsTable).where(
-    eq(channelEventLogsTable.event, "Product Catalog Push Completed")
-  );
-  if (dummyEvents.length > 0) {
-    await db.delete(channelEventLogsTable);
+      .values({ id: randomUUID(), storeId, ...webhook })
+      .onConflictDoNothing({ target: [channelWebhooksTable.webhookId, channelWebhooksTable.storeId] });
   }
 }
 
@@ -293,6 +287,7 @@ export async function addEvent(
   event: string,
   detail: string,
   type: EventType = "info",
+  storeId: string,
   actor: AuditActor = {},
 ) {
   try {
@@ -300,6 +295,7 @@ export async function addEvent(
     const createdAt = new Date();
     const payload = {
       id,
+      storeId,
       channel,
       event,
       detail,
@@ -325,20 +321,22 @@ export async function addEvent(
   }
 }
 
-export async function auditActor(req: Request): Promise<AuditActor> {
+export async function auditActor(req: TenantRequest): Promise<AuditActor> {
   return {
-    adminUserId: req.adminUser?.id,
-    adminEmail: req.adminUser?.email,
+    adminUserId: (req as any).adminUser?.id,
+    adminEmail: (req as any).adminUser?.email,
     ip: req.ip,
     userAgent: req.get("user-agent") ?? undefined,
   };
 }
 
-router.get("/channels/configs", async (_req, res) => {
-  return res.json(await db.select().from(channelConfigsTable));
+router.get("/channels/configs", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(channelConfigsTable).where(eq(channelConfigsTable.storeId, storeId)));
 });
 
-router.put("/channels/configs/:channelId/status", async (req, res) => {
+router.put("/channels/configs/:channelId/status", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const channelId = req.params.channelId as string;
   const parsedStatus = z.enum(["CONNECTED", "PAUSED", "DISCONNECTED"]).safeParse(req.body.status);
   if (!parsedStatus.success) return res.status(400).json({ error: "Invalid channel status." });
@@ -348,39 +346,41 @@ router.put("/channels/configs/:channelId/status", async (req, res) => {
   }
   const [updated] = await db.update(channelConfigsTable)
     .set({ status, updatedAt: new Date() })
-    .where(eq(channelConfigsTable.channelId, channelId))
+    .where(and(eq(channelConfigsTable.channelId, channelId), eq(channelConfigsTable.storeId, storeId)))
     .returning();
   if (!updated) return res.status(404).json({ error: "Channel not found" });
-  addEvent(channelId, `Status changed to ${status}`, `Channel is now ${status.toLowerCase()}.`, "warning");
+  addEvent(channelId, `Status changed to ${status}`, `Channel is now ${status.toLowerCase()}.`, "warning", storeId);
   return res.json(updated);
 });
 
-router.post("/channels/configs/:channelId/verify", async (req, res) => {
+router.post("/channels/configs/:channelId/verify", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const channelId = req.params.channelId as string;
-  const [config] = await db.select().from(channelConfigsTable).where(eq(channelConfigsTable.channelId, channelId)).limit(1);
+  const [config] = await db.select().from(channelConfigsTable).where(and(eq(channelConfigsTable.channelId, channelId), eq(channelConfigsTable.storeId, storeId))).limit(1);
   if (!config) return res.status(404).json({ error: "Channel not found" });
   const startedAt = performance.now();
   try {
-    const result = await verifyConnection(channelId, await getChannelCredentials(channelId));
+    const result = await verifyConnection(channelId, await getChannelCredentials(channelId, storeId));
     const latency = Math.round(performance.now() - startedAt);
     if (!result.pass) throw new Error(result.detail);
     const [updated] = await db.update(channelConfigsTable)
       .set({ latency, status: "CONNECTED", updatedAt: new Date() })
-      .where(eq(channelConfigsTable.channelId, channelId)).returning();
-    addEvent(channelId, "Connection verification passed", `${result.detail} (${latency}ms)`, "sync");
+      .where(and(eq(channelConfigsTable.channelId, channelId), eq(channelConfigsTable.storeId, storeId))).returning();
+    addEvent(channelId, "Connection verification passed", `${result.detail} (${latency}ms)`, "sync", storeId);
     return res.json({ ...updated, account: result.account, operation: "connection_verification" });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     const latency = Math.round(performance.now() - startedAt);
     await db.update(channelConfigsTable).set({ status: "DISCONNECTED", latency, updatedAt: new Date() })
-      .where(eq(channelConfigsTable.channelId, channelId));
-    addEvent(channelId, "Connection verification failed", `${detail} (${latency}ms)`, "error");
+      .where(and(eq(channelConfigsTable.channelId, channelId), eq(channelConfigsTable.storeId, storeId)));
+    addEvent(channelId, "Connection verification failed", `${detail} (${latency}ms)`, "error", storeId);
     return res.status(502).json({ error: detail, latency });
   }
 });
 
-router.post("/channels/configs/verify-all", async (_req, res) => {
-  const configs = await db.select().from(channelConfigsTable);
+router.post("/channels/configs/verify-all", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  const configs = await db.select().from(channelConfigsTable).where(eq(channelConfigsTable.storeId, storeId));
   if (configs.length === 0) {
     return res.status(409).json({
       ok: false,
@@ -391,36 +391,37 @@ router.post("/channels/configs/verify-all", async (_req, res) => {
   const results = await Promise.all(configs.map(async (config) => {
     const startedAt = performance.now();
     try {
-      const result = await verifyConnection(config.channelId, await getChannelCredentials(config.channelId));
+      const result = await verifyConnection(config.channelId, await getChannelCredentials(config.channelId, storeId));
       const latency = Math.round(performance.now() - startedAt);
       if (!result.pass) throw new Error(result.detail);
       await db.update(channelConfigsTable).set({ latency, status: "CONNECTED", lastSync: new Date(), updatedAt: new Date() })
-        .where(eq(channelConfigsTable.channelId, config.channelId));
-      addEvent(config.channelId, "Connection verification passed", `${result.detail} (${latency}ms)`, "sync");
+        .where(and(eq(channelConfigsTable.channelId, config.channelId), eq(channelConfigsTable.storeId, storeId)));
+      addEvent(config.channelId, "Connection verification passed", `${result.detail} (${latency}ms)`, "sync", storeId);
       return { channelId: config.channelId, ok: true, latency, account: result.account, operation: "connection_verification" };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       const latency = Math.round(performance.now() - startedAt);
       await db.update(channelConfigsTable).set({ status: "DISCONNECTED", latency, updatedAt: new Date() })
-        .where(eq(channelConfigsTable.channelId, config.channelId));
-      addEvent(config.channelId, "Connection verification failed", `${detail} (${latency}ms)`, "error");
+        .where(and(eq(channelConfigsTable.channelId, config.channelId), eq(channelConfigsTable.storeId, storeId)));
+      addEvent(config.channelId, "Connection verification failed", `${detail} (${latency}ms)`, "error", storeId);
       return { channelId: config.channelId, ok: false, latency, error: detail };
     }
   }));
   const failed = results.filter((result) => !result.ok).length;
-  addEvent("system", failed ? "Connection verification completed with failures" : "Connection verification completed", `${results.length - failed}/${results.length} channels verified.`, failed ? "warning" : "sync");
+  addEvent("system", failed ? "Connection verification completed with failures" : "Connection verification completed", `${results.length - failed}/${results.length} channels verified.`, failed ? "warning" : "sync", storeId);
   return res.status(failed ? 207 : 200).json({ ok: failed === 0 && results.length > 0, results });
 });
 
-router.post("/channels/configs/:channelId/test", async (req, res) => {
+router.post("/channels/configs/:channelId/test", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const channelId = req.params.channelId as string;
   const [config] = await db.select().from(channelConfigsTable)
-    .where(eq(channelConfigsTable.channelId, channelId)).limit(1);
+    .where(and(eq(channelConfigsTable.channelId, channelId), eq(channelConfigsTable.storeId, storeId))).limit(1);
   if (!config) return res.status(404).json({ error: "Channel not found" });
   const startedAt = performance.now();
   let result: LiveCheck;
   try {
-    result = await verifyConnection(channelId, await getChannelCredentials(channelId));
+    result = await verifyConnection(channelId, await getChannelCredentials(channelId, storeId));
   } catch (error) {
     result = { pass: false, detail: error instanceof Error ? error.message : String(error) };
   }
@@ -428,66 +429,74 @@ router.post("/channels/configs/:channelId/test", async (req, res) => {
   const latency = Math.round(performance.now() - startedAt);
   await db.update(channelConfigsTable)
     .set({ latency, status: result.pass ? "CONNECTED" : "DISCONNECTED", updatedAt: new Date() })
-    .where(eq(channelConfigsTable.channelId, channelId));
+    .where(and(eq(channelConfigsTable.channelId, channelId), eq(channelConfigsTable.storeId, storeId)));
   addEvent(
     channelId,
     result.pass ? "Live connection test passed" : "Live connection test failed",
     `${result.detail} (${latency}ms)`,
     result.pass ? "sync" : "error",
+    storeId
   );
   return res.json({ pass: result.pass, ok: result.pass, latency, detail: result.detail, account: result.account });
 });
 
-router.get("/channels/events", async (_req, res) => {
-  return res.json(await db.select().from(channelEventLogsTable).orderBy(desc(channelEventLogsTable.createdAt)).limit(200));
+router.get("/channels/events", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(channelEventLogsTable).where(eq(channelEventLogsTable.storeId, storeId)).orderBy(desc(channelEventLogsTable.createdAt)).limit(200));
 });
 
-router.delete("/channels/events", async (_req, res) => {
-  await db.delete(channelEventLogsTable);
+router.delete("/channels/events", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  await db.delete(channelEventLogsTable).where(eq(channelEventLogsTable.storeId, storeId));
   return res.json({ ok: true });
 });
 
-router.get("/channels/webhooks", async (_req, res) => {
-  return res.json(await db.select().from(channelWebhooksTable));
+router.get("/channels/webhooks", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
+  return res.json(await db.select().from(channelWebhooksTable).where(eq(channelWebhooksTable.storeId, storeId)));
 });
 
-router.put("/channels/webhooks/:webhookId", async (req, res) => {
+router.put("/channels/webhooks/:webhookId", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const [updated] = await db.update(channelWebhooksTable)
     .set({ active: Boolean(req.body.active), updatedAt: new Date() })
-    .where(eq(channelWebhooksTable.webhookId, req.params.webhookId as string))
+    .where(and(eq(channelWebhooksTable.webhookId, req.params.webhookId as string), eq(channelWebhooksTable.storeId, storeId)))
     .returning();
   if (!updated) return res.status(404).json({ error: "Webhook not found" });
   return res.json(updated);
 });
 
-router.get("/channels/credentials/:channel", async (req, res) => {
+router.get("/channels/credentials/:channel", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const channel = req.params.channel as string;
   if (!CHANNELS.includes(channel as typeof CHANNELS[number])) return res.status(404).json({ error: "Unknown channel." });
-  return res.json(publicCredentials(await getChannelCredentials(channel)));
+  return res.json(publicCredentials(await getChannelCredentials(channel, storeId)));
 });
 
-router.put("/channels/credentials/:channel", async (req, res) => {
+router.put("/channels/credentials/:channel", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const channel = req.params.channel as string;
   if (!CHANNELS.includes(channel as typeof CHANNELS[number])) return res.status(404).json({ error: "Unknown channel." });
   const parsed = credentialSchemas[channel as typeof CHANNELS[number]].safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid credential fields.", details: parsed.error.flatten() });
-  const existing = await getChannelCredentials(channel);
+  const existing = await getChannelCredentials(channel, storeId);
   const data = { ...existing };
   for (const [key, value] of Object.entries(parsed.data)) {
     if (value === undefined || (SECRET_FIELDS.has(key) && value.startsWith("••••"))) continue;
     if (value === "") delete data[key];
     else data[key] = value;
   }
-  await persistCredentials(channel, data);
-  await addEvent(channel, "API credentials updated", "Credentials saved to database.", "info", await auditActor(req));
+  await persistCredentials(channel, data, storeId);
+  await addEvent(channel, "API credentials updated", "Credentials saved to database.", "info", storeId, await auditActor(req));
   return res.json({ ok: true, credentials: publicCredentials(data) });
 });
 
-router.delete("/channels/credentials/:channel", async (req, res) => {
+router.delete("/channels/credentials/:channel", async (req: TenantRequest, res: Response) => {
+  const storeId = req.storeId!;
   const channel = req.params.channel as string;
   if (!CHANNELS.includes(channel as typeof CHANNELS[number])) return res.status(404).json({ error: "Unknown channel." });
-  await persistCredentials(channel, {});
-  await addEvent(channel, "API credentials cleared", "All credentials removed.", "warning", await auditActor(req));
+  await persistCredentials(channel, {}, storeId);
+  await addEvent(channel, "API credentials cleared", "All credentials removed.", "warning", storeId, await auditActor(req));
   return res.json({ ok: true });
 });
 
