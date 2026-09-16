@@ -69,14 +69,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      if (result.user && result.user.email) {
+      if (result.user) {
+        const idToken = await result.user.getIdToken();
         const res = await fetch("/api/auth/firebase", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: result.user.email,
-            name: result.user.displayName || result.user.email.split("@")[0],
-            uid: result.user.uid,
+            idToken,
           }),
         });
         if (res.ok) {

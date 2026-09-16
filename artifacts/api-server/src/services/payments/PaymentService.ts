@@ -11,6 +11,7 @@ import {
   paymentAuditLogsTable,
   appSettingsTable,
   providerPluginsTable,
+  ordersTable,
 } from "@workspace/db";
 import { encryptCredential, decryptCredential } from "../credentialVault";
 import { StripePaymentProvider } from "./StripePaymentProvider";
@@ -952,12 +953,16 @@ export class PaymentService {
   }
 
   async verifyCheckout(params: VerifyPaymentParams): Promise<VerifyPaymentResult> {
-    const storeId = params.storeId || "store-main";
     const [transaction] = await db.select().from(paymentTransactionsTable)
       .where(eq(paymentTransactionsTable.reference, params.reference)).limit(1);
 
     if (!transaction) {
       throw Object.assign(new Error("Transaction reference not found."), { statusCode: 404 });
+    }
+
+    const storeId = transaction.storeId || params.storeId;
+    if (!storeId) {
+      throw Object.assign(new Error("Store ID missing for transaction verification."), { statusCode: 400 });
     }
 
     const providerName = transaction.provider as PaymentProviderType;
@@ -980,6 +985,14 @@ export class PaymentService {
       updatedAt: new Date(),
     }).where(eq(paymentTransactionsTable.reference, params.reference));
 
+    if (verification.success && transaction.orderId) {
+      await db.update(ordersTable).set({
+        paymentStatus: "PAID",
+        paidAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(eq(ordersTable.id, transaction.orderId), eq(ordersTable.storeId, storeId)));
+    }
+
     await this.logAudit({
       storeId,
       action: "PAYMENT_VERIFIED",
@@ -991,12 +1004,16 @@ export class PaymentService {
   }
 
   async processRefund(params: RefundParams): Promise<RefundResult> {
-    const storeId = params.storeId || "store-main";
     const [transaction] = await db.select().from(paymentTransactionsTable)
       .where(eq(paymentTransactionsTable.reference, params.reference)).limit(1);
 
     if (!transaction) {
       throw Object.assign(new Error("Transaction reference not found for refund."), { statusCode: 404 });
+    }
+
+    const storeId = transaction.storeId || params.storeId;
+    if (!storeId) {
+      throw Object.assign(new Error("Store ID missing for refund transaction."), { statusCode: 400 });
     }
 
     const providerName = transaction.provider as PaymentProviderType;
@@ -1028,6 +1045,14 @@ export class PaymentService {
       updatedAt: new Date(),
     }).where(eq(paymentTransactionsTable.id, transaction.id));
 
+    if (transaction.orderId) {
+      await db.update(ordersTable).set({
+        paymentStatus: "REFUNDED",
+        status: "REFUNDED",
+        updatedAt: new Date(),
+      }).where(and(eq(ordersTable.id, transaction.orderId), eq(ordersTable.storeId, storeId)));
+    }
+
     await this.logAudit({
       storeId,
       action: "REFUND_CREATED",
@@ -1047,11 +1072,31 @@ export class PaymentService {
     const provider = this.getProvider(providerName);
     const eventResult = await provider.handleWebhook(rawBody, signature, headers);
 
+    let resolvedStoreId = eventResult.storeId;
+    let existingTx: any = null;
+
+    if (eventResult.reference) {
+      const [tx] = await db.select().from(paymentTransactionsTable)
+        .where(eq(paymentTransactionsTable.reference, eventResult.reference))
+        .limit(1);
+      if (tx) {
+        existingTx = tx;
+        if (!resolvedStoreId) {
+          resolvedStoreId = tx.storeId;
+        }
+      }
+    }
+
+    if (!resolvedStoreId) {
+      console.warn(`[Payment] Webhook event received for provider ${providerName} without identifiable storeId or reference.`);
+      return eventResult;
+    }
+
     // Record webhook idempotently
     try {
       await db.insert(paymentWebhookEventsTable).values({
         id: randomUUID(),
-        storeId: eventResult.storeId || "store-main",
+        storeId: resolvedStoreId,
         provider: providerName,
         eventId: eventResult.eventId,
         eventType: eventResult.eventType,
@@ -1063,8 +1108,43 @@ export class PaymentService {
       // Non-blocking duplicate suppression
     }
 
+    // Update transaction and order states if matching transaction exists
+    if (existingTx) {
+      try {
+        await db.update(paymentTransactionsTable).set({
+          status: eventResult.status,
+          providerTransactionId: eventResult.providerTransactionId || existingTx.providerTransactionId,
+          verifiedAt: eventResult.status === "paid" ? new Date() : existingTx.verifiedAt,
+          updatedAt: new Date(),
+        }).where(eq(paymentTransactionsTable.id, existingTx.id));
+
+        if (existingTx.orderId) {
+          if (eventResult.status === "paid") {
+            await db.update(ordersTable).set({
+              paymentStatus: "PAID",
+              paidAt: new Date(),
+              updatedAt: new Date(),
+            }).where(and(eq(ordersTable.id, existingTx.orderId), eq(ordersTable.storeId, resolvedStoreId)));
+          } else if (eventResult.status === "failed") {
+            await db.update(ordersTable).set({
+              paymentStatus: "FAILED",
+              updatedAt: new Date(),
+            }).where(and(eq(ordersTable.id, existingTx.orderId), eq(ordersTable.storeId, resolvedStoreId)));
+          } else if (eventResult.status === "refunded") {
+            await db.update(ordersTable).set({
+              paymentStatus: "REFUNDED",
+              status: "REFUNDED",
+              updatedAt: new Date(),
+            }).where(and(eq(ordersTable.id, existingTx.orderId), eq(ordersTable.storeId, resolvedStoreId)));
+          }
+        }
+      } catch (dbErr) {
+        console.error(`[Payment] Failed to update order/transaction from webhook:`, dbErr);
+      }
+    }
+
     await this.logAudit({
-      storeId: eventResult.storeId || "store-main",
+      storeId: resolvedStoreId,
       action: "WEBHOOK_PROCESSED",
       provider: providerName,
       details: { eventId: eventResult.eventId, eventType: eventResult.eventType, status: eventResult.status },

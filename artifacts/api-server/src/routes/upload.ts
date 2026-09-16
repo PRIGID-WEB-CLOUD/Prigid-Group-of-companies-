@@ -84,7 +84,12 @@ const handleUpload = async (req: TenantRequest, res: Response) => {
       return res.status(400).json({ error: "No image file provided for upload." });
     }
 
-    const cloudinaryCfg = await getCloudinaryConfig(storeId).catch(() => ({ isConfigured: false }));
+    const cloudinaryCfg = await getCloudinaryConfig(storeId).catch(() => ({
+      isConfigured: false,
+      cloudName: "",
+      apiKey: "",
+      apiSecret: "",
+    }));
     const savedRecords = [];
     const urls: string[] = [];
 
@@ -95,19 +100,23 @@ const handleUpload = async (req: TenantRequest, res: Response) => {
       let width: number | null = null;
       let height: number | null = null;
 
-      if (cloudinaryCfg.isConfigured) {
+      if (cloudinaryCfg.isConfigured && cloudinaryCfg.cloudName && cloudinaryCfg.cloudName !== "undefined") {
         try {
           const cloudRes = await uploadToCloudinary(file.path, storeId);
-          fileUrl = cloudRes.url;
-          publicId = cloudRes.publicId;
-          format = cloudRes.format || format;
-          width = cloudRes.width || null;
-          height = cloudRes.height || null;
+          if (cloudRes.url && !cloudRes.url.includes("/undefined/")) {
+            fileUrl = cloudRes.url;
+            publicId = cloudRes.publicId;
+            format = cloudRes.format || format;
+            width = cloudRes.width || null;
+            height = cloudRes.height || null;
 
-          // Remove temporary file from local disk after successful upload to Cloudinary
-          try {
-            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-          } catch {}
+            // Remove temporary file from local disk after successful upload to Cloudinary
+            try {
+              if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+            } catch {}
+          } else {
+            logger.warn("Cloudinary returned a malformed URL with 'undefined'; retaining local storage fallback");
+          }
         } catch (cErr: any) {
           logger.warn({ err: cErr }, "Cloudinary upload failed, falling back to local storage");
         }

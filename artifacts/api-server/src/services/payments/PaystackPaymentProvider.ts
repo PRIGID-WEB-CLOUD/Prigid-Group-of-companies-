@@ -368,14 +368,15 @@ export class PaystackPaymentProvider implements IPaymentProvider {
     if (!signature) {
       throw new Error("Missing x-paystack-signature header.");
     }
+    if (!secret) {
+      throw new Error("Paystack webhook/secret key is not configured.");
+    }
 
-    if (secret) {
-      const expected = createHmac("sha512", secret).update(rawBody).digest("hex");
-      const left = Buffer.from(expected, "hex");
-      const right = Buffer.from(signature, "hex");
-      if (left.length !== right.length || !timingSafeEqual(left, right)) {
-        throw new Error("Invalid Paystack webhook signature.");
-      }
+    const expected = createHmac("sha512", secret).update(rawBody).digest("hex");
+    const left = Buffer.from(expected, "hex");
+    const right = Buffer.from(signature, "hex");
+    if (left.length !== right.length || !timingSafeEqual(left, right)) {
+      throw new Error("Invalid Paystack webhook signature.");
     }
 
     const event = JSON.parse(rawBody) as {

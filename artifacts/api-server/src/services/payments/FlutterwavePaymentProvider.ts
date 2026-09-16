@@ -285,7 +285,13 @@ export class FlutterwavePaymentProvider implements IPaymentProvider {
     const secretHash = secretOverride || this.getWebhookSecret();
     const receivedHash = (headers["verif-hash"] || headers["verif_hash"] || signature) as string | undefined;
 
-    if (secretHash && receivedHash && receivedHash !== secretHash) {
+    if (!receivedHash) {
+      throw new Error("Missing Flutterwave verif-hash header.");
+    }
+    if (!secretHash) {
+      throw new Error("Flutterwave webhook secret hash is not configured.");
+    }
+    if (receivedHash !== secretHash) {
       throw new Error("Invalid Flutterwave webhook signature hash.");
     }
 

@@ -809,4 +809,44 @@ export type InsertShowroomLocation = z.infer<typeof insertShowroomLocationSchema
 export type ShowroomLocation = typeof showroomLocationsTable.$inferSelect;
 export const showroomLocations = showroomLocationsTable;
 
+// ── Waitlist ──────────────────────────────────────────────────────────────────
+
+export const waitlistTable = pgTable("waitlist", {
+  id:        text("id").primaryKey(),
+  storeId:   text("store_id").references(() => storesTable.id, { onDelete: "cascade" }),
+  email:     text("email").notNull(),
+  fullName:  text("full_name"),
+  source:    text("source").notNull().default("web"),
+  metadata:  jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("waitlist_store_email_idx").on(table.storeId, table.email),
+]);
+
+export const waitlist = waitlistTable;
+export type WaitlistEntry = typeof waitlistTable.$inferSelect;
+
+// ── External Provider Bindings ────────────────────────────────────────────────
+
+export const externalProviderBindingsTable = pgTable("external_provider_bindings", {
+  id:                 text("id").primaryKey(),
+  storeId:            text("store_id").notNull().references(() => storesTable.id, { onDelete: "cascade" }),
+  provider:           text("provider").notNull(), // "eprolo" | "dhl" | "stripe" | ...
+  externalAccountId:  text("external_account_id"),
+  externalOrderId:    text("external_order_id"),
+  externalShipmentId: text("external_shipment_id"),
+  internalOrderId:    text("internal_order_id").references(() => ordersTable.id, { onDelete: "cascade" }),
+  metadata:           jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+  updatedAt:          timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ext_bindings_store_idx").on(table.storeId),
+  index("ext_bindings_provider_ext_order_idx").on(table.provider, table.externalOrderId),
+  index("ext_bindings_provider_ext_shipment_idx").on(table.provider, table.externalShipmentId),
+  index("ext_bindings_internal_order_idx").on(table.internalOrderId),
+]);
+
+export const externalProviderBindings = externalProviderBindingsTable;
+export type ExternalProviderBinding = typeof externalProviderBindingsTable.$inferSelect;
+
 

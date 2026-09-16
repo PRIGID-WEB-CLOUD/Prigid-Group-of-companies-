@@ -14,6 +14,7 @@ import {
   buildWhatsAppWelcomeMessage,
 } from "../services/whatsappService";
 import { type TenantRequest } from "../middleware/tenantContext";
+import { verifyFirebaseIdToken } from "../services/firebaseAuth";
 
 const router = Router();
 const PASSWORD_SCHEMA = z.string().min(8).max(128);
@@ -239,14 +240,21 @@ router.post("/auth/login", validate(loginSchema), async (req: TenantRequest, res
 });
 
 const firebaseAuthSchema = z.object({
-  email: emailSchema,
-  name: z.string().optional(),
-  uid: z.string().optional(),
+  idToken: z.string().min(10),
 });
 
 router.post("/auth/firebase", validate(firebaseAuthSchema), async (req: TenantRequest, res: Response) => {
   const storeId = req.storeId!;
-  const { email, name, uid } = req.body;
+  const { idToken } = req.body;
+  
+  let verified;
+  try {
+    verified = await verifyFirebaseIdToken(idToken);
+  } catch (err: any) {
+    return res.status(401).json({ error: err.message || "Invalid or unverified Firebase ID token." });
+  }
+
+  const { email, name, uid } = verified;
   
   let [user] = await db.select().from(usersTable).where(and(eq(usersTable.email, email), eq(usersTable.storeId, storeId))).limit(1);
   if (!user) {

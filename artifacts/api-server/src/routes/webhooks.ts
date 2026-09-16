@@ -59,7 +59,11 @@ async function processWhatsAppWebhook(payload: any) {
   const entries = payload?.entry || [];
   for (const entry of entries) {
     const recipientId = entry.id;
-    const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+    const storeId = await resolveStoreIdFromRecipient(recipientId);
+    if (!storeId) {
+      logger.warn({ recipientId }, "[Meta WhatsApp Webhook] Unmapped recipient ID; dropping event to preserve tenant boundary");
+      continue;
+    }
 
     const changes = entry?.changes || [];
     for (const change of changes) {
@@ -115,7 +119,11 @@ async function processFacebookWebhook(payload: any) {
   const entries = payload?.entry || [];
   for (const entry of entries) {
     const recipientId = entry.id;
-    const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+    const storeId = await resolveStoreIdFromRecipient(recipientId);
+    if (!storeId) {
+      logger.warn({ recipientId }, "[Meta Facebook Webhook] Unmapped recipient ID; dropping event to preserve tenant boundary");
+      continue;
+    }
 
     // 1. Messenger DMs
     if (entry?.messaging) {
@@ -210,7 +218,11 @@ async function processInstagramWebhook(payload: any) {
   const entries = payload?.entry || [];
   for (const entry of entries) {
     const recipientId = entry.id;
-    const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+    const storeId = await resolveStoreIdFromRecipient(recipientId);
+    if (!storeId) {
+      logger.warn({ recipientId }, "[Meta Instagram Webhook] Unmapped recipient ID; dropping event to preserve tenant boundary");
+      continue;
+    }
 
     // 1. Instagram DMs
     if (entry?.messaging) {
@@ -353,7 +365,11 @@ router.post("/webhooks/commerce", async (req, res) => {
 
     if (change) {
       const recipientId = entry?.id;
-      const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+      const storeId = await resolveStoreIdFromRecipient(recipientId);
+      if (!storeId) {
+        logger.warn({ recipientId }, "[Meta Commerce Webhook] Unmapped recipient ID; ignoring event to preserve tenant boundary");
+        return res.status(200).json({ ok: true });
+      }
 
       await addEvent(
         "commerce",
@@ -382,7 +398,11 @@ router.post("/webhooks/ads", async (req, res) => {
 
     if (change) {
       const recipientId = entry?.id;
-      const storeId = await resolveStoreIdFromRecipient(recipientId) || "store-main";
+      const storeId = await resolveStoreIdFromRecipient(recipientId);
+      if (!storeId) {
+        logger.warn({ recipientId }, "[Meta Ads Webhook] Unmapped recipient ID; ignoring event to preserve tenant boundary");
+        return res.status(200).json({ ok: true });
+      }
 
       await addEvent(
         "ads",

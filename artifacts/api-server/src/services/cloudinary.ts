@@ -7,19 +7,26 @@ export async function getCloudinaryConfig(storeId: string) {
   const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.storeId, storeId));
   const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
 
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME || settings.cloudinary_cloud_name || "";
-  const apiKey = process.env.CLOUDINARY_API_KEY || settings.cloudinary_api_key || "";
-  let rawSecret = process.env.CLOUDINARY_API_SECRET || settings.cloudinary_api_secret || "";
+  const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || settings.cloudinary_cloud_name || "").trim();
+  const apiKey = (process.env.CLOUDINARY_API_KEY || settings.cloudinary_api_key || "").trim();
+  let rawSecret = (process.env.CLOUDINARY_API_SECRET || settings.cloudinary_api_secret || "").trim();
 
   if (rawSecret && isEncryptedCredential(rawSecret)) {
     try {
-      rawSecret = decryptCredential(rawSecret);
+      rawSecret = decryptCredential(rawSecret).trim();
     } catch {
       // ignore
     }
   }
 
-  const isConfigured = Boolean(cloudName && apiKey && rawSecret);
+  const isConfigured = Boolean(
+    cloudName &&
+    apiKey &&
+    rawSecret &&
+    cloudName !== "undefined" &&
+    apiKey !== "undefined" &&
+    rawSecret !== "undefined"
+  );
   return { cloudName, apiKey, apiSecret: rawSecret, isConfigured };
 }
 

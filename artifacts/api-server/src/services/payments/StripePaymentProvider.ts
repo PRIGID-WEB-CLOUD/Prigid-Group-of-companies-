@@ -464,30 +464,31 @@ export class StripePaymentProvider implements IPaymentProvider {
     if (!signature) {
       throw new Error("Missing Stripe-Signature header.");
     }
+    if (!webhookSecret) {
+      throw new Error("Stripe webhook secret is not configured.");
+    }
 
-    if (webhookSecret) {
-      // Validate signature
-      const sigElements = signature.split(",").reduce((acc, pair) => {
-        const [k, v] = pair.split("=");
-        if (k && v) acc[k.trim()] = v.trim();
-        return acc;
-      }, {} as Record<string, string>);
+    // Validate signature
+    const sigElements = signature.split(",").reduce((acc, pair) => {
+      const [k, v] = pair.split("=");
+      if (k && v) acc[k.trim()] = v.trim();
+      return acc;
+    }, {} as Record<string, string>);
 
-      const timestamp = sigElements["t"];
-      const v1 = sigElements["v1"];
+    const timestamp = sigElements["t"];
+    const v1 = sigElements["v1"];
 
-      if (!timestamp || !v1) {
-        throw new Error("Malformed Stripe signature header.");
-      }
+    if (!timestamp || !v1) {
+      throw new Error("Malformed Stripe signature header.");
+    }
 
-      const signedPayload = `${timestamp}.${rawBody}`;
-      const expected = createHmac("sha256", webhookSecret).update(signedPayload).digest("hex");
+    const signedPayload = `${timestamp}.${rawBody}`;
+    const expected = createHmac("sha256", webhookSecret).update(signedPayload).digest("hex");
 
-      const left = Buffer.from(expected, "hex");
-      const right = Buffer.from(v1, "hex");
-      if (left.length !== right.length || !timingSafeEqual(left, right)) {
-        throw new Error("Invalid Stripe webhook signature.");
-      }
+    const left = Buffer.from(expected, "hex");
+    const right = Buffer.from(v1, "hex");
+    if (left.length !== right.length || !timingSafeEqual(left, right)) {
+      throw new Error("Invalid Stripe webhook signature.");
     }
 
     const event = JSON.parse(rawBody) as {
