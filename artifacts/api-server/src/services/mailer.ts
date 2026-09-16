@@ -69,7 +69,7 @@ export async function getSmtpConfig(storeId?: string) {
 
 export async function sendEmail(email: Email): Promise<void> {
   const storeId = email.storeId || "store-main";
-  const fromAddress = await getConfiguredSender(storeId) || "concierge@luxeboutique.com";
+  const fromAddress = await getConfiguredSender(storeId);
   const smtp = await getSmtpConfig(storeId);
   const brand = await loadBrandingCache(storeId);
 
@@ -172,7 +172,11 @@ export async function getConfiguredSender(storeId: string): Promise<string> {
     .from(appSettingsTable)
     .where(and(eq(appSettingsTable.key, "store_email"), eq(appSettingsTable.storeId, storeId)))
     .limit(1);
-  return row?.value || "concierge@luxeboutique.com";
+  if (row?.value) return row.value;
+
+  const [store] = await db.select().from(storesTable).where(eq(storesTable.id, storeId)).limit(1);
+  if (store?.slug) return `noreply@${store.slug}.prigidcommerce.com`;
+  return "noreply@prigidcommerce.com";
 }
 
 export async function getStoreUrl(storeId: string): Promise<string> {
@@ -201,7 +205,7 @@ export async function getStoreUrl(storeId: string): Promise<string> {
     .limit(1);
 
   // 3. Fallback to general environment variables
-  const raw = row?.value || process.env.PUBLIC_APP_URL || process.env.APP_URL || "https://luxeboutique.com";
+  const raw = row?.value || process.env.PUBLIC_APP_URL || process.env.APP_URL || "https://prigidcommerce.com";
   const appUrl = raw.split(",")[0].trim().replace(/\/$/, "");
   return /^https?:\/\//i.test(appUrl) ? appUrl : `https://${appUrl}`;
 }

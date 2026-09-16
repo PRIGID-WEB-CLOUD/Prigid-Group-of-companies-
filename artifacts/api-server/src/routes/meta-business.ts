@@ -1173,12 +1173,6 @@ router.post("/channels/meta/sync-assets", requireAdmin, async (req: TenantReques
     return res.status(400).json({ error: "Meta Business Suite is not connected." });
   }
 
-  // If connected via dev sandbox
-  if (creds.master_access_token === "dev_mock_master_token") {
-    await addEvent("meta_business", "Assets Re-synchronized", "Sandbox assets verified.", "sync", storeId, await auditActor(req));
-    return res.json({ ok: true, message: "Sandbox assets refreshed." });
-  }
-
   try {
     const discoveredAssets = await discoverMetaAssets(creds.master_access_token, storeId);
     await provisionDiscoveredAssets(

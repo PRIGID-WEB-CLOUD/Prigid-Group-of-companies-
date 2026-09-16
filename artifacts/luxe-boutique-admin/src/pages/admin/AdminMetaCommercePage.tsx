@@ -140,7 +140,7 @@ export default function AdminMetaCommercePage() {
   const [settings, setSettings] = useState<CatalogSettings | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSavedMsg, setSettingsSavedMsg] = useState("");
-  const [prodDomain, setProdDomain] = useState("luxe-boutique.onrender.com");
+  const [prodDomain, setProdDomain] = useState(() => (typeof window !== "undefined" ? window.location.host : ""));
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState("");
 
@@ -1232,12 +1232,12 @@ export default function AdminMetaCommercePage() {
               <div className="space-y-5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 font-[Manrope]">Production Domain</label>
-                  <p className="text-[11px] text-slate-500 mb-2">The domain used for product links in the Meta catalog (e.g., luxe-boutique.onrender.com).</p>
+                  <p className="text-[11px] text-slate-500 mb-2">The domain used for product links in the Meta catalog (e.g., yourboutique.com).</p>
                   <input
                     type="text"
                     value={prodDomain}
                     onChange={(e) => setProdDomain(e.target.value)}
-                    placeholder="e.g. luxe-boutique.onrender.com"
+                    placeholder="e.g. yourboutique.com"
                     className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#1877F2]"
                   />
                 </div>

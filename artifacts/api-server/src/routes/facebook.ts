@@ -20,6 +20,17 @@ const router = Router();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function getStoreDomain(req: TenantRequest, explicitDomain?: string): string {
+  if (explicitDomain && explicitDomain.trim()) return explicitDomain.trim();
+  if (req.store?.customDomain) {
+    return req.store.customDomain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  }
+  const host = req.get("host");
+  if (host) return host;
+  if (req.store?.slug) return `${req.store.slug}.prigidcommerce.com`;
+  return "prigidcommerce.com";
+}
+
 function getFbCreds(storeId: string) { return getChannelCredentials("facebook", storeId); }
 
 async function getCommerceMetaCreds(storeId: string) {
@@ -226,7 +237,7 @@ router.post("/m-event", async (req: TenantRequest, res) => {
 router.get("/facebook/catalog/feed.xml", async (req: TenantRequest, res) => {
   const storeId = req.storeId!;
   const queryDomain = req.query.domain as string;
-  const storeDomain = queryDomain || req.headers.host || process.env["REPLIT_DEV_DOMAIN"] || "luxeboutique.com";
+  const storeDomain = getStoreDomain(req, queryDomain);
   const protocol = req.headers["x-forwarded-proto"] || "https";
   const baseUrl = queryDomain ? `https://${queryDomain}` : `${protocol}://${storeDomain}`;
 
@@ -601,7 +612,7 @@ router.post("/facebook/catalog/products", async (req: TenantRequest, res) => {
   }
 
   const itemId = retailerId || `prod-${Date.now()}`;
-  const storeDomain = req.get("host") || "luxeboutique.com";
+  const storeDomain = getStoreDomain(req);
   const itemUrl = link || `https://${storeDomain}/products/${itemId}`;
   const itemImage = imageUrl ? resolveInstagramPublicUrl(req, imageUrl) : `https://${storeDomain}/placeholder.jpg`;
   const priceNum = Number(price);
@@ -775,7 +786,7 @@ router.post("/facebook/catalog/sync", async (req: TenantRequest, res) => {
     });
   }
 
-  const storeDomain = (req.body as { storeDomain?: string }).storeDomain ?? req.headers.host ?? process.env["REPLIT_DEV_DOMAIN"] ?? "luxeboutique.com";
+  const storeDomain = getStoreDomain(req, (req.body as { storeDomain?: string }).storeDomain);
 
   // Fetch active products with their categories from the DB
   const rows = await db
@@ -1002,15 +1013,7 @@ router.get("/facebook/pages/search", async (req: TenantRequest, res) => {
   if (!q) return res.json([]);
   const result = await fbGraphGet("/pages/search", storeId, { q, fields: "id,name,username,picture" });
   if (!result.ok) {
-    // Return mock results as fallback so search is fully functional in development/sandbox
-    const mocks = [
-      { id: "12345678", name: "Luxe Group", username: "luxegroup" },
-      { id: "87654321", name: "Haute Couture", username: "hautecouture" },
-      { id: "55443322", name: "Vogue Magazine", username: "voguemagazine" },
-      { id: "99887766", name: "Fashion Hub", username: "fashionhub" }
-    ];
-    const filtered = mocks.filter(m => m.name.toLowerCase().includes(q.toLowerCase()) || m.username.toLowerCase().includes(q.toLowerCase()));
-    return res.json(filtered);
+    return res.status(502).json({ error: "Failed to search Facebook pages via Graph API", details: result.data });
   }
   return res.json((result.data as any)?.data || []);
 });
@@ -2286,7 +2289,7 @@ router.post("/facebook/ads/ads", async (req: TenantRequest, res) => {
 
   // 1. First create an Ad Creative
   const creativeUrl = new URL(`https://graph.facebook.com/v21.0/${actId}/adcreatives`);
-  const storeDomain = req.get("host") || "luxeboutique.com";
+  const storeDomain = getStoreDomain(req);
   const resolvedImageUrl = imageUrl ? resolveInstagramPublicUrl(req, imageUrl) : `https://${storeDomain}/placeholder.jpg`;
   const creativeParams: Record<string, string> = {
     name: `${name} Creative`,

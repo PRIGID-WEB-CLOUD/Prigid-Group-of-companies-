@@ -74,7 +74,8 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Extract base origin
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://luxeboutique.store";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const currentHost = typeof window !== "undefined" ? window.location.hostname : "";
 
   // Preset destination routes (only included if corresponding items/content exist in store)
   const STORE_PRESETS = useMemo(() => {
@@ -283,7 +284,7 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: matchedProduct.name,
         subtitle: matchedProduct.price ? `€${Number(matchedProduct.price).toFixed(2)} • LUXE BOUTIQUE` : "LUXE BOUTIQUE",
         image: img,
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "product"
       };
     }
@@ -299,7 +300,7 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: `${matchedCategory.name} Collection`,
         subtitle: `Explore ${matchedCategory.name} Category • LUXE BOUTIQUE`,
         image: "https://images.unsplash.com/photo-1470309864661-68328b2cd0a5?auto=format&fit=crop&w=1200&q=80",
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "category"
       };
     }
@@ -315,7 +316,7 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: matchedPost.title,
         subtitle: `Editorial Lookbook • By ${matchedPost.authorName || "LUXE BOUTIQUE"}`,
         image: matchedPost.imageUrl || "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=80",
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "post"
       };
     }
@@ -334,7 +335,7 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: `Special Promo: ${matchedCoupon.code} (${discountText})`,
         subtitle: `Claim Exclusive Checkout Discount • LUXE BOUTIQUE`,
         image: "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=1200&q=80",
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "coupon"
       };
     }
@@ -345,7 +346,7 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: "New Arrivals & Capsule Drops",
         subtitle: "Exclusive Seasonal Collection • LUXE BOUTIQUE",
         image: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=80",
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "preset"
       };
     }
@@ -354,7 +355,7 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: "Luxury Catalog & Couture Collections",
         subtitle: "Explore All Products • LUXE BOUTIQUE",
         image: "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1200&q=80",
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "preset"
       };
     }
@@ -363,7 +364,7 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: "Boutique Categories & Lookbooks",
         subtitle: "Designer Fashion & Accessories",
         image: "https://images.unsplash.com/photo-1470309864661-68328b2cd0a5?auto=format&fit=crop&w=1200&q=80",
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "preset"
       };
     }
@@ -372,7 +373,7 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: "Editorial Fashion Journal & Style Guides",
         subtitle: "Behind the Atelier • LUXE BOUTIQUE",
         image: "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=80",
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "preset"
       };
     }
@@ -381,15 +382,15 @@ export const LinkAttachmentPicker: React.FC<LinkAttachmentPickerProps> = ({
         title: "White-Glove Order Tracking & Concierge",
         subtitle: "Real-time Order Updates • LUXE BOUTIQUE",
         image: "https://images.unsplash.com/photo-1534452203293-494d7ddbf7e0?auto=format&fit=crop&w=1200&q=80",
-        domain: "luxeboutique.store",
+        domain: currentHost,
         type: "preset"
       };
     }
 
     // Default Fallback Store Card
-    let hostname = "luxeboutique.store";
+    let hostname = currentHost;
     try {
-      hostname = new URL(value, origin).hostname;
+      hostname = new URL(value, origin || undefined).hostname;
     } catch (_) {}
 
     return {

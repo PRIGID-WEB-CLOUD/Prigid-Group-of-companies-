@@ -5,9 +5,17 @@ import { type TenantRequest } from "../middleware/tenantContext";
 
 const seoRouter = Router();
 
+function getEffectiveHost(req: TenantRequest): string {
+  const host = req.get("host");
+  if (host) return host;
+  if (req.store?.customDomain) return req.store.customDomain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (req.store?.slug) return `${req.store.slug}.prigidcommerce.com`;
+  return "prigidcommerce.com";
+}
+
 // ── GET /robots.txt & /api/robots.txt ───────────────────────────────────────
 seoRouter.get(["/robots.txt", "/api/robots.txt"], (req: TenantRequest, res: Response) => {
-  const host = req.get("host") || "luxeboutique.com";
+  const host = getEffectiveHost(req);
   const protocol = req.protocol || "https";
   const baseUrl = `${protocol}://${host}`;
 
@@ -29,7 +37,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 seoRouter.get(["/sitemap.xml", "/api/sitemap.xml"], async (req: TenantRequest, res: Response) => {
   try {
     const storeId = req.storeId; // Optional for public SEO routes, but can be resolved via host
-    const host = req.get("host") || "luxeboutique.com";
+    const host = getEffectiveHost(req);
     const protocol = req.protocol || "https";
     const baseUrl = `${protocol}://${host}`;
 

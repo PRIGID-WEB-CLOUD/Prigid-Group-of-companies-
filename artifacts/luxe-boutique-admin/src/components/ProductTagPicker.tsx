@@ -65,7 +65,7 @@ export const ProductTagPicker: React.FC<ProductTagPickerProps> = ({
   const [showPinModal, setShowPinModal] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://luxeboutique.store";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   // Fetch store catalog products for tagging
   useEffect(() => {

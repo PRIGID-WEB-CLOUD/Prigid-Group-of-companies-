@@ -1,6 +1,6 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { db, storesTable, sessionsTable, usersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { extractTenantFromHost, validateTenantSlug, sanitizeTenantSlug, type TenantHostInfo } from "@workspace/tenant-routing";
 import { logger } from "../lib/logger";
 import { createHash } from "node:crypto";
@@ -125,16 +125,25 @@ export async function tenantResolver(req: TenantRequest, res: Response, next: Ne
     else if (querySlug && validateTenantSlug(querySlug)) {
       storeRecord = allStores.find((s: any) => s.slug === querySlug);
     }
-    // 5. Master domain request with cookie or dev fallback
+    // 5. Master domain request with cookie or active session
     else if (tenantInfo.type === "master") {
       const cookieSlug = req.cookies?.prigid_store_slug;
       if (cookieSlug && validateTenantSlug(cookieSlug)) {
         storeRecord = allStores.find((s: any) => s.slug === cookieSlug);
       }
       
-      // If still not resolved on master domain for admin/seller endpoints
-      if (!storeRecord && (checkPath.startsWith("/api/admin") || checkPath.startsWith("/api/settings") || checkPath.startsWith("/api/team"))) {
-        storeRecord = allStores[0];
+      // If not resolved by cookie, check if caller's session token maps to an authoritative store
+      if (!storeRecord) {
+        const token = extractToken(req);
+        if (token) {
+          const hashed = sessionDigest(token);
+          const [session] = await db.select().from(sessionsTable)
+            .where(or(eq(sessionsTable.token, token), eq(sessionsTable.token, hashed)))
+            .limit(1);
+          if (session?.storeId) {
+            storeRecord = allStores.find((s: any) => s.id === session.storeId);
+          }
+        }
       }
     }
 

@@ -32,7 +32,7 @@ export default function AdminPinterestPage() {
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [merchantId, setMerchantId] = useState("");
-  const [verifiedDomain, setVerifiedDomain] = useState("luxeboutique.com");
+  const [verifiedDomain, setVerifiedDomain] = useState("");
   const [richPins, setRichPins] = useState(true);
   const [autoBoards, setAutoBoards] = useState(true);
   const [showSecret, setShowSecret] = useState(false);
@@ -57,7 +57,7 @@ export default function AdminPinterestPage() {
       setAppId(config.appId || "");
       setAppSecret(config.appSecret || "");
       setMerchantId(config.merchantId || "");
-      setVerifiedDomain(config.verifiedDomain || "luxeboutique.com");
+      setVerifiedDomain(config.verifiedDomain || "");
       setRichPins(config.richPinsEnabled ?? true);
       setAutoBoards(config.autoCreateBoards ?? true);
     }

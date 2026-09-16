@@ -19,7 +19,7 @@ router.get("/channels/pinterest/config", async (req: TenantRequest, res) => {
       appId: settings.pinterest_app_id || "",
       appSecret: settings.pinterest_app_secret ? "●●●●●●●●" : "",
       merchantId: settings.pinterest_merchant_id || "",
-      verifiedDomain: settings.pinterest_verified_domain || "luxeboutique.com",
+      verifiedDomain: settings.pinterest_verified_domain || req.store?.customDomain || (req.store?.slug ? `${req.store.slug}.prigidcommerce.com` : ""),
       richPinsEnabled: settings.pinterest_rich_pins !== "false",
       autoCreateBoards: settings.pinterest_auto_boards !== "false",
       connected: Boolean(settings.pinterest_app_id && settings.pinterest_merchant_id),
@@ -37,7 +37,7 @@ router.post("/channels/pinterest/config", async (req: TenantRequest, res) => {
     const entries = [
       ["pinterest_app_id", appId],
       ["pinterest_merchant_id", merchantId],
-      ["pinterest_verified_domain", verifiedDomain || "luxeboutique.com"],
+      ["pinterest_verified_domain", verifiedDomain || req.store?.customDomain || ""],
       ["pinterest_rich_pins", String(richPinsEnabled ?? true)],
       ["pinterest_auto_boards", String(autoCreateBoards ?? true)],
     ];

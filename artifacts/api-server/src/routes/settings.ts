@@ -204,7 +204,10 @@ router.put("/settings", async (req: TenantRequest, res: Response) => {
 router.post("/settings/test/email", async (req: TenantRequest, res: Response) => {
   const storeId = req.storeId!;
   const settings = await readSettings(storeId);
-  const sentTo = settings.store_email || "admin@luxeboutique.com";
+  const sentTo = settings.store_email || (req as any).user?.email;
+  if (!sentTo) {
+    return res.status(400).json({ error: "Store email address is not configured. Please save a Store Email in settings first." });
+  }
   try {
     await sendEmail({
       to: sentTo,

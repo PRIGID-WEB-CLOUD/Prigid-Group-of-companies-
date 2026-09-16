@@ -653,9 +653,11 @@ router.post("/whatsapp/broadcast", async (req: TenantRequest, res: Response) => 
     }
   }
 
-  // Fallback demo/sandbox targets if no phones found
   if (targetPhones.length === 0) {
-    targetPhones = ["15551234567", "15559876543"];
+    return res.status(400).json({
+      error: "No recipient phone numbers found for this broadcast campaign.",
+      code: "NO_RECIPIENTS_FOUND",
+    });
   }
 
   let successCount = 0;
