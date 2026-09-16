@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, storesTable } from "@workspace/db";
+import { buildTenantUrl } from "@workspace/tenant-routing";
 
 const router = Router();
 
@@ -83,7 +84,7 @@ const DEFAULT_PROFILE = {
   established: "Est. 2024",
 };
 
-router.get("/marketplace/stores", async (_req: Request, res: Response) => {
+router.get("/marketplace/stores", async (req: Request, res: Response) => {
   try {
     const stores = await db.select().from(storesTable);
     const publishedStores = stores.filter((s: any) =>
@@ -92,11 +93,19 @@ router.get("/marketplace/stores", async (_req: Request, res: Response) => {
       s.publishStatus !== "SUSPENDED"
     );
 
+    const hostHeader = (req.headers["x-forwarded-host"] || req.get("host") || req.hostname) as string;
+
     const enriched = publishedStores.map((store: any) => {
       const profile = BOUTIQUE_PROFILES[store.slug] || {
         ...DEFAULT_PROFILE,
         tagline: `${store.name} — Curated Luxury Collection`,
       };
+
+      const tenantUrl = buildTenantUrl({
+        slug: store.slug,
+        customDomain: store.customDomain,
+        path: "/",
+      }, hostHeader);
 
       return {
         id: store.id,
@@ -115,7 +124,7 @@ router.get("/marketplace/stores", async (_req: Request, res: Response) => {
         highlights: profile.highlights,
         rating: profile.rating,
         established: profile.established,
-        storeUrl: `/boutique/${store.slug}`,
+        storeUrl: tenantUrl,
       };
     });
 

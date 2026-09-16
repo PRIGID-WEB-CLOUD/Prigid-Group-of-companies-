@@ -15,7 +15,9 @@
       "@workspace/db": ["../../lib/db/src/index.ts"],
       "@workspace/db/*": ["../../lib/db/src/*"],
       "@workspace/api-zod": ["../../lib/api-zod/src/index.ts"],
-      "@workspace/api-zod/*": ["../../lib/api-zod/src/*"]
+      "@workspace/api-zod/*": ["../../lib/api-zod/src/*"],
+      "@workspace/tenant-routing": ["../../lib/tenant-routing/src/index.ts"],
+      "@workspace/tenant-routing/*": ["../../lib/tenant-routing/src/*"]
     }
   },
   "include": ["src"],
@@ -25,6 +27,9 @@
     },
     {
       "path": "../../lib/api-zod"
+    },
+    {
+      "path": "../../lib/tenant-routing"
     }
   ]
 }

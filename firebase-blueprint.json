@@ -10,6 +10,11 @@
           "description": "Recipient email address",
           "maxLength": 320
         },
+        "storeId": {
+          "type": "string",
+          "description": "Store identifier associated with email",
+          "maxLength": 64
+        },
         "message": {
           "type": "object",
           "description": "Email message payload containing subject, text, and optional html."

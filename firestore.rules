@@ -11,6 +11,8 @@ service cloud.firestore {
     // Outbound email queue collection (write-only queue)
     match /mail/{mailId} {
       allow create: if request.resource.data.to is string
+        && request.resource.data.to.size() <= 320
+        && (!('storeId' in request.resource.data) || (request.resource.data.storeId is string && request.resource.data.storeId.size() <= 64))
         && request.resource.data.message is map
         && request.resource.data.delivery is map;
       allow read, update, delete: if false;

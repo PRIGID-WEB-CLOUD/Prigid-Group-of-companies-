@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@workspace/tenant-routing": "*",
     "@googlemaps/js-api-loader": "^1.16.8",
     "@vis.gl/react-google-maps": "^1.5.1",
     "leaflet": "^1.9.4",

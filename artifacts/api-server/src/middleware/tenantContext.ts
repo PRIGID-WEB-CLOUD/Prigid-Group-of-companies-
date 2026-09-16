@@ -1,12 +1,14 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { db, storesTable, sessionsTable, usersTable } from "@workspace/db";
-import { eq, or, and } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { extractTenantFromHost, validateTenantSlug, sanitizeTenantSlug, type TenantHostInfo } from "@workspace/tenant-routing";
 import { logger } from "../lib/logger";
 import { createHash } from "node:crypto";
 
 export interface TenantRequest extends Request {
   storeId?: string;
   store?: typeof storesTable.$inferSelect;
+  tenantInfo?: TenantHostInfo;
 }
 
 function sessionDigest(token: string) {
@@ -23,33 +25,44 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-async function isUserAdminOfStore(req: Request, storeId: string): Promise<boolean> {
+export async function isUserAdminOfStore(req: Request, storeId: string): Promise<boolean> {
   const token = extractToken(req);
   if (!token) return false;
 
-  const rows = await db
-    .select({ user: usersTable })
-    .from(sessionsTable)
-    .innerJoin(usersTable, eq(sessionsTable.userId, usersTable.id))
-    .where(and(
-      eq(sessionsTable.token, sessionDigest(token)),
-      eq(sessionsTable.storeId, storeId)
-    ))
-    .limit(1);
+  try {
+    const rows = await db
+      .select({ user: usersTable })
+      .from(sessionsTable)
+      .innerJoin(usersTable, eq(sessionsTable.userId, usersTable.id))
+      .where(and(
+        eq(sessionsTable.token, sessionDigest(token)),
+        eq(sessionsTable.storeId, storeId)
+      ))
+      .limit(1);
 
-  const row = rows[0];
-  if (!row) return false;
-  
-  const role = row.user.role.toUpperCase();
-  return role === "ADMIN" || role === "SUPER_ADMIN";
+    const row = rows[0];
+    if (!row) return false;
+    
+    const role = row.user.role?.toUpperCase();
+    return role === "ADMIN" || role === "SUPER_ADMIN" || role === "PLATFORM_ADMIN";
+  } catch (err) {
+    logger.error({ err, storeId }, "Error checking admin status");
+    return false;
+  }
 }
 
 /**
- * Middleware to resolve the tenant (store) for the current request.
- * Scans headers for X-Store-Id or X-Publishable-Key, or falls back to hostname.
+ * Middleware to resolve and enforce tenant isolation for all requests.
+ * Extracts tenant from:
+ * 1. Hostname subdomain (e.g. "atelier-celeste.prigidcommerce.com" or "atelier-celeste.ais-dev-xxx.run.app")
+ * 2. Hostname custom domain (e.g. "www.atelierceleste.com", "moretti.it")
+ * 3. Verified HTTP headers (X-Store-Id or X-Publishable-Key)
+ * 4. Explicit scoped query / cookie (in development / preview fallback)
  */
 export async function tenantResolver(req: TenantRequest, res: Response, next: NextFunction) {
   const checkPath = req.path.startsWith("/api") ? req.path : `/api${req.path}`;
+
+  // Platform-level routes that do not require store isolation
   if (
     checkPath === "/api/health" ||
     checkPath.startsWith("/api/platform-admin") ||
@@ -60,66 +73,108 @@ export async function tenantResolver(req: TenantRequest, res: Response, next: Ne
     return next();
   }
 
+  const hostHeader = (req.headers["x-forwarded-host"] || req.get("host") || req.hostname) as string;
+  const tenantInfo = extractTenantFromHost(hostHeader);
+  req.tenantInfo = tenantInfo;
+
   const storeIdHeader = (req.headers["x-store-id"] || req.query.storeId) as string;
   const pubKeyHeader = (req.headers["x-publishable-key"] || req.query.publishableKey) as string;
-  const slugQuery = (req.query.store || req.cookies?.prigid_store_slug) as string;
-  const host = req.hostname;
+  const querySlug = req.query.store as string | undefined;
 
   try {
-    let storeRecord;
-
     const allStores = await db.select().from(storesTable);
+    let storeRecord: (typeof storesTable.$inferSelect) | undefined;
 
-    if (storeIdHeader) {
+    // 1. Resolve by Tenant Subdomain
+    if (tenantInfo.type === "subdomain" && tenantInfo.slug) {
+      const sanitizedSlug = sanitizeTenantSlug(tenantInfo.slug);
+      storeRecord = allStores.find((s: any) => s.slug === sanitizedSlug);
+      
+      if (!storeRecord) {
+        return res.status(404).json({
+          error: "Store Not Found",
+          code: "TENANT_NOT_FOUND",
+          message: `No active boutique found for subdomain "${tenantInfo.slug}".`,
+        });
+      }
+    }
+    // 2. Resolve by Custom Domain
+    else if (tenantInfo.type === "custom_domain" && tenantInfo.domain) {
+      const domainToMatch = tenantInfo.domain.toLowerCase().replace(/^www\./, "");
+      storeRecord = allStores.find((s: any) => {
+        if (!s.customDomain) return false;
+        const normalized = s.customDomain.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].split(":")[0];
+        return normalized === domainToMatch || s.customDomain.toLowerCase() === tenantInfo.domain;
+      });
+
+      if (!storeRecord) {
+        return res.status(404).json({
+          error: "Store Not Found",
+          code: "CUSTOM_DOMAIN_NOT_MAPPED",
+          message: `No active boutique found for custom domain "${tenantInfo.domain}".`,
+        });
+      }
+    }
+    // 3. Resolve by explicit headers (e.g. mobile app, POS, or internal authenticated calls)
+    else if (storeIdHeader) {
       storeRecord = allStores.find((s: any) => s.id === storeIdHeader);
     } else if (pubKeyHeader) {
       storeRecord = allStores.find((s: any) => s.publishableKey === pubKeyHeader || s.publishable_key === pubKeyHeader);
-    } else if (slugQuery) {
-      storeRecord = allStores.find((s: any) => s.slug === slugQuery);
-    } else if (host && !host.includes("localhost") && !host.endsWith(".run.app") && !host.endsWith(".aistudio.app") && !host.endsWith(".prigidcommerce.com")) {
-      // Resolve by custom domain
-      storeRecord = allStores.find((s: any) => s.customDomain === host || s.custom_domain === host);
-    } else if (host && host.endsWith(".prigidcommerce.com")) {
-      // Resolve by slug subdomain
-      const slug = host.split(".")[0];
-      if (slug !== "www" && slug !== "platform") {
-        storeRecord = allStores.find((s: any) => s.slug === slug);
+    }
+    // 4. Resolve by query parameter in development/preview
+    else if (querySlug && validateTenantSlug(querySlug)) {
+      storeRecord = allStores.find((s: any) => s.slug === querySlug);
+    }
+    // 5. Master domain request with cookie or dev fallback
+    else if (tenantInfo.type === "master") {
+      const cookieSlug = req.cookies?.prigid_store_slug;
+      if (cookieSlug && validateTenantSlug(cookieSlug)) {
+        storeRecord = allStores.find((s: any) => s.slug === cookieSlug);
+      }
+      
+      // If still not resolved on master domain for admin/seller endpoints
+      if (!storeRecord && (checkPath.startsWith("/api/admin") || checkPath.startsWith("/api/settings") || checkPath.startsWith("/api/team"))) {
+        storeRecord = allStores[0];
       }
     }
 
     if (!storeRecord) {
-      // Fallback: If no store resolved, check if we have a default "main" store for the environment
-      storeRecord = allStores[0] || null;
-    }
-
-    if (!storeRecord) {
       return res.status(404).json({
-        error: "Tenant not found",
-        message: "No store identified for this request. Please provide valid tenant parameters or custom domain."
+        error: "Tenant Not Found",
+        code: "TENANT_RESOLUTION_FAILED",
+        message: "Unable to identify the store tenant for this request. Please access via the boutique's dedicated subdomain.",
       });
     }
 
+    // Enforce Suspended status
     if (storeRecord.status === "suspended" || storeRecord.publishStatus === "SUSPENDED") {
       return res.status(403).json({
-        error: "Store suspended",
-        message: "This store has been suspended. Please contact Prigid Commerce Group support."
+        error: "Store Suspended",
+        code: "STORE_SUSPENDED",
+        message: "This boutique has been suspended. Please contact PRIGID Commerce Group support.",
       });
     }
 
     // Publication status enforcement for public storefront endpoints
-    const isPublicEndpoint = !checkPath.startsWith("/api/admin") && !checkPath.startsWith("/api/settings") && !checkPath.startsWith("/api/team");
+    const isPublicStorefrontEndpoint = 
+      !checkPath.startsWith("/api/admin") && 
+      !checkPath.startsWith("/api/settings") && 
+      !checkPath.startsWith("/api/team") &&
+      !checkPath.startsWith("/api/auth/seller");
     
-    if (isPublicEndpoint && storeRecord.publishStatus !== "PUBLISHED") {
+    if (isPublicStorefrontEndpoint && storeRecord.publishStatus !== "PUBLISHED") {
       const isAdmin = await isUserAdminOfStore(req, storeRecord.id);
       if (!isAdmin) {
         return res.status(403).json({
           error: "Private Atelier",
-          message: "This store is under curation and is not publicly accessible.",
+          code: "STORE_UNPUBLISHED",
+          message: "This boutique is currently configuring its digital showroom and is not publicly accessible.",
           isPublished: false,
         });
       }
     }
 
+    // Attach verified tenant context to the request
     req.storeId = storeRecord.id;
     req.store = storeRecord;
     

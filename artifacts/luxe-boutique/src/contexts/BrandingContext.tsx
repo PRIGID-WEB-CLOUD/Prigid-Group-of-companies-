@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { extractTenantFromHost, validateTenantSlug } from "@workspace/tenant-routing";
 
 export interface StoreBranding {
   store_id: string;
@@ -54,10 +55,16 @@ const BrandingContext = createContext<BrandingContextType>({
 
 export function getActiveStoreSlug(): string | null {
   if (typeof window === "undefined") return null;
-  const match = window.location.pathname.match(/^\/(?:boutique|store)\/([a-zA-Z0-9_-]+)/);
-  if (match && match[1]) return match[1];
+  const hostInfo = extractTenantFromHost(window.location.host);
+  if (hostInfo.type === "subdomain" && hostInfo.slug && validateTenantSlug(hostInfo.slug)) {
+    return hostInfo.slug;
+  }
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get("store")) return urlParams.get("store");
+  if (urlParams.get("store") && validateTenantSlug(urlParams.get("store")!)) {
+    return urlParams.get("store");
+  }
+  const match = window.location.pathname.match(/^\/(?:boutique|store)\/([a-zA-Z0-9_-]+)/);
+  if (match && match[1] && validateTenantSlug(match[1])) return match[1];
   return null;
 }
 

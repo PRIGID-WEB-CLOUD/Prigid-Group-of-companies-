@@ -11,6 +11,7 @@ import { uploadsDir } from "./routes/upload";
 import { tenantResolver } from "./middleware/tenantContext";
 import { db, storesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { buildTenantUrl, extractTenantFromHost } from "@workspace/tenant-routing";
 
 const app: Express = express();
 app.set("trust proxy", true);
@@ -212,17 +213,13 @@ if (resolvedLandingDir && resolvedStoreDir) {
     let isTenant = false;
     let storeRecord = null;
     try {
-      if (host && !host.includes("localhost") && !host.endsWith(".run.app") && !host.endsWith(".aistudio.app")) {
-        // Resolve by custom domain
-        [storeRecord] = await db.select().from(storesTable).where(eq(storesTable.customDomain, host)).limit(1);
+      const hostInfo = extractTenantFromHost(host);
+      if (hostInfo.type === "custom_domain" && hostInfo.domain) {
+        [storeRecord] = await db.select().from(storesTable).where(eq(storesTable.customDomain, hostInfo.domain)).limit(1);
         if (storeRecord) isTenant = true;
-      } else if (host && host.endsWith(".prigidcommerce.com")) {
-        // Resolve by slug subdomain
-        const slug = host.split(".")[0];
-        if (slug !== "www" && slug !== "platform") {
-          [storeRecord] = await db.select().from(storesTable).where(eq(storesTable.slug, slug)).limit(1);
-          if (storeRecord) isTenant = true;
-        }
+      } else if (hostInfo.type === "subdomain" && hostInfo.slug) {
+        [storeRecord] = await db.select().from(storesTable).where(eq(storesTable.slug, hostInfo.slug)).limit(1);
+        if (storeRecord) isTenant = true;
       }
     } catch (err) {
       logger.error(err, "Tenant lookup failed in landing router");
@@ -267,10 +264,23 @@ if (resolvedLandingDir && resolvedStoreDir) {
 }
 
 if (resolvedStoreDir) {
-  app.get(["/boutique/:slug", "/store/:slug"], (req, res) => {
-    const { slug } = req.params;
-    res.cookie("prigid_store_slug", slug, { path: "/", maxAge: 86400000, sameSite: "lax" });
-    return res.sendFile(path.join(resolvedStoreDir, "index.html"));
+  // Legacy URL redirection: 301 Permanent Redirect to tenant subdomain
+  app.get(["/boutique/:slug", "/store/:slug"], async (req, res, next) => {
+    const rawSlug = req.params.slug;
+    const slug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
+    if (!slug) return next();
+
+    let customDomain: string | null = null;
+    try {
+      const [record] = await db.select({ customDomain: storesTable.customDomain }).from(storesTable).where(eq(storesTable.slug, slug)).limit(1);
+      if (record?.customDomain) {
+        customDomain = record.customDomain;
+      }
+    } catch {
+      // ignore lookup error
+    }
+    const targetUrl = buildTenantUrl({ slug, customDomain, protocol: req.protocol }, req.hostname);
+    return res.redirect(301, targetUrl);
   });
 
   app.use(express.static(resolvedStoreDir));

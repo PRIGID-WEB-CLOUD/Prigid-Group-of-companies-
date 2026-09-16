@@ -21,7 +21,7 @@ export default function Header() {
   const currencyDropdownRef = useRef<HTMLDivElement>(null);
 
   const activeCurrency = currencies.find(c => c.code === currencyCode) || currencies[0];
-  const homeHref = activeSlug ? `/boutique/${activeSlug}` : "/";
+  const homeHref = "/";
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

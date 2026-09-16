@@ -1,5 +1,6 @@
 import { db, appSettingsTable, storesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { buildTenantUrl } from "@workspace/tenant-routing";
 import fs from "fs";
 import path from "path";
 import nodemailer from "nodemailer";
@@ -176,34 +177,18 @@ export async function getConfiguredSender(storeId: string): Promise<string> {
 
 export async function getStoreUrl(storeId: string): Promise<string> {
   try {
-    // 1. Check storesTable for a custom domain or custom slug
+    // 1. Check storesTable for custom domain or slug
     const [store] = await db.select()
       .from(storesTable)
       .where(eq(storesTable.id, storeId))
       .limit(1);
 
     if (store) {
-      if (store.customDomain) {
-        const domain = store.customDomain.trim();
-        return /^https?:\/\//i.test(domain) ? domain : `https://${domain}`;
-      }
-
-      // If they have a slug, we can append it as a subdomain to the platform base domain
-      if (store.slug) {
-        const baseAppUrl = (process.env.PUBLIC_APP_URL || process.env.APP_URL || "").trim().replace(/\/$/, "");
-        if (baseAppUrl) {
-          try {
-            const urlObj = new URL(baseAppUrl);
-            const hostParts = urlObj.hostname.split(".");
-            // Use the base domain of the platform if possible (e.g. prigidcommerce.com)
-            const baseDomain = hostParts.slice(-2).join(".");
-            return `${urlObj.protocol}//${store.slug}.${baseDomain}`;
-          } catch {
-            // fallback if URL parsing fails
-            return `${baseAppUrl}/${store.slug}`;
-          }
-        }
-      }
+      return buildTenantUrl({
+        slug: store.slug,
+        customDomain: store.customDomain,
+        path: "/",
+      });
     }
   } catch (error) {
     console.error(`[Store URL Resolution] Failed to lookup store ${storeId}:`, error);

@@ -40,6 +40,7 @@ import {
   MdPalette,
 } from "react-icons/md";
 import { SiGoogleanalytics, SiPaypal, SiDhl } from "react-icons/si";
+import { buildTenantUrl } from "@workspace/tenant-routing";
 import AdminLayout from "./AdminLayout";
 import PaymentSettingsManager from "../../components/PaymentSettingsManager";
 
@@ -1120,7 +1121,7 @@ export default function AdminSettingsPage() {
                             </div>
 
                             <div className="flex items-center gap-3 shrink-0">
-                              <a href="/" target="_blank" rel="noopener noreferrer"
+                              <a href={buildTenantUrl({ slug: storeSubdomain || "luxe-boutique", customDomain: storeCustomDomain })} target="_blank" rel="noopener noreferrer"
                                 className="px-3 py-1.5 bg-white border border-[#c6c6cd] text-slate-700 rounded-lg text-xs font-semibold font-[Manrope] hover:bg-slate-50 transition-all flex items-center gap-1">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
@@ -1147,7 +1148,7 @@ export default function AdminSettingsPage() {
                         </div>
                         <div className="sm:col-span-2">
                           <Field label="SaaS Platform Subdomain" value={storeSubdomain} onChange={setStoreSubdomain}
-                            placeholder="my-boutique" hint="Your default store URL will be: https://[subdomain].yourplatform.com" />
+                            placeholder="my-boutique" hint={`Your public boutique URL is: ${buildTenantUrl({ slug: storeSubdomain || "my-boutique", customDomain: storeCustomDomain })}`} />
                         </div>
                         <div className="sm:col-span-2">
                           <Field label="Custom Domain" value={storeCustomDomain} onChange={setStoreCustomDomain}

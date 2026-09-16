@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { extractTenantFromHost, validateTenantSlug } from "@workspace/tenant-routing";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
@@ -97,10 +98,16 @@ function Router() {
 
 function getActiveStoreSlug(): string | null {
   if (typeof window === "undefined") return null;
-  const match = window.location.pathname.match(/^\/(?:boutique|store)\/([a-zA-Z0-9_-]+)/);
-  if (match && match[1]) return match[1];
+  const hostInfo = extractTenantFromHost(window.location.host);
+  if (hostInfo.type === "subdomain" && hostInfo.slug && validateTenantSlug(hostInfo.slug)) {
+    return hostInfo.slug;
+  }
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get("store")) return urlParams.get("store");
+  if (urlParams.get("store") && validateTenantSlug(urlParams.get("store")!)) {
+    return urlParams.get("store");
+  }
+  const match = window.location.pathname.match(/^\/(?:boutique|store)\/([a-zA-Z0-9_-]+)/);
+  if (match && match[1] && validateTenantSlug(match[1])) return match[1];
   return null;
 }
 
